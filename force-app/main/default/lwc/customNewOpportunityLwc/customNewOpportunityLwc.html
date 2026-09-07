@@ -1,0 +1,387 @@
+<template>
+    <lightning-button variant="brand" label="New Opportunity" onclick={createNewOpportunity}></lightning-button>
+    <template if:true={isModalOpen}>
+        <!-- Modal/Popup Box LWC starts here -->
+        <section role="dialog" tabindex="-1" aria-labelledby="make-modal-heading-01" aria-modal="true"
+            aria-describedby="modal-content-id-1" class="slds-modal slds-fade-in-open">
+            <div class="slds-modal__container">
+                <!-- Modal/Popup Box LWC header here -->
+                <header class="slds-modal__header">
+                    <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse"
+                        title="Close" onclick={closeMainModal}>
+                        <lightning-icon icon-name="utility:close" alternative-text="close" variant="inverse"
+                            size="small"></lightning-icon>
+                        <span class="slds-assistive-text">Close</span>
+                    </button>
+                    <template if:false={newScreen}>
+
+                    <lightning-progress-indicator current-step={currentStep} type="base" variant="base">
+                        <lightning-progress-step label="Create Opportunity" value="1"></lightning-progress-step>
+                        <lightning-progress-step label="Create Compound" value="2"></lightning-progress-step>
+                        <lightning-progress-step label="Create Quote" value="3"></lightning-progress-step>
+                        <lightning-progress-step label="Email feature" value="4"></lightning-progress-step>
+                    </lightning-progress-indicator>
+                    </template>
+                </header>
+
+                <!-- Modal/Popup Box LWC body starts here -->
+                <div class="slds-modal__content slds-p-around_medium" id="make-modal-content-id-1">
+                    <template if:true={newScreen}>
+                        <br />
+                        <h2 class="slds-align_absolute-center">{label.noActiveCDA}</h2>
+                        <br />
+                        <br />
+
+                        <c-custom-lookup field-label={fieldLabel} child-object-api-name={childObjectApiName}
+                        target-field-api-name={targetFieldApiName} required='true' onvalueselected={handleValueSelcted}></c-custom-lookup>
+
+                        <br />
+                        <lightning-input label="Reason for Creating Opportunity without a CDA in place" type="text" required="true" onchange={handleInputChange}> </lightning-input>
+                        <br />
+                        <br />  
+                        
+                        <lightning-button variant="success"
+                                class="slds-m-top_small slds-align_absolute-center" label="Create Opportunity without an Active CDA"
+                                onclick={hideNewScreen}></lightning-button>
+                    </template>
+                    <template if:false={newScreen}>
+
+                    <div class="stepOne">
+                        <br />
+                        <h2 class="slds-align_absolute-center">Create Opportunity</h2>
+                        <br />
+                        <br />
+
+                        <lightning-record-edit-form object-api-name="Opportunity" onsubmit={saveOpportunity}>
+                            <lightning-messages></lightning-messages>
+                            <lightning-input-field field-name="Name" value={oppObj.Name} disabled={oppObj.Disabled}>
+                            </lightning-input-field>
+                            <br />
+                            <lightning-input-field field-name="StageName" value={oppObj.StageName}
+                                disabled={oppObj.Disabled}></lightning-input-field>
+                            <br />
+                            <lightning-input-field field-name="CloseDate" value={oppObj.CloseDate}
+                                disabled={oppObj.Disabled}></lightning-input-field>
+                            <br />
+                            <lightning-input-field field-name="Due_Date_for_China__c" value={oppObj.Due_Date_for_China__c}
+                                disabled={oppObj.Disabled} required="true"></lightning-input-field>
+                            <br />
+                            <lightning-input-field field-name="Date_RFP_due_to_Client__c" value={oppObj.Date_RFP_due_to_Client__c}
+                                disabled={oppObj.Disabled} required="true"></lightning-input-field>
+                            <br/>
+                            <lightning-input-field field-name="Ship_to_Country__c" value={oppObj.Ship_to_Country__c}
+                                disabled={oppObj.Disabled} required="true"></lightning-input-field>
+                            <br />
+                            <lightning-input-field field-name="Type" value={oppObj.Type} disabled={oppObj.Disabled}>
+                            </lightning-input-field>
+                            <br />
+                            <lightning-input-field field-name="AccountId" value={oppObj.AccountId}
+                                disabled={oppObj.Disabled}></lightning-input-field>
+                            <br />
+                            <!--template if:true={noActive}>
+
+                            <lightning-input-field field-name="Requesting_User__c" value={oppObj.Requesting_User__c}
+                                disabled={oppObj.Disabled}></lightning-input-field>
+                            <br />
+                            <label for="fieldid">Reason for Creating Opportunity without a CDA in place</label>
+                            <lightning-input-field  id="fieldid" variant="label-hidden" field-name="Bypass_Reason__c" value={oppObj.Bypass_Reason__c}
+                                disabled={oppObj.Disabled}></lightning-input-field>
+                            <br />
+                            </template-->
+                            <br />
+
+                            <lightning-input-field field-name="Background_Comments__c" value={oppObj.Background_Comments__c}
+                                disabled={oppObj.Disabled} required="true"></lightning-input-field>
+                            <br /><br />
+                            
+
+                            <lightning-button disabled={oppObj.Disabled} variant="success"
+                                class="slds-m-top_small slds-align_absolute-center" label="Save Opportunity"
+                                type="submit"></lightning-button>
+                        </lightning-record-edit-form>
+                        <hr />
+
+                        <lightning-file-upload label="Opportunity Attachments:" name="fileUploader"
+                            disabled={oppObj.FileUploadDisabled} accept={acceptedFormats} record-id={oppObj.Id}
+                            onuploadfinished={handleOpportunityFilesUploadFinished} class="slds-align_absolute-center"
+                            multiple></lightning-file-upload>
+                        <br />
+                        <div class="slds-align_absolute-center">
+                            <table class="slds-table slds-table_cell-buffer slds-table_bordered">
+                                <thead>
+                                    <tr class="slds-line-height_reset">
+                                        <th class="" scope="col">Serial</th>
+                                        <th class="" scope="col">File Name</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template for:each={opportunityAttachments} for:item="oppatt" for:index="index">
+                                        <tr key={oppatt.documentId} class="slds-line-height_reset">
+                                            <td>{index}</td>
+                                            <td>{oppatt.name}</td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                        <hr />
+                        <lightning-button disabled={oppObj.NextButtonDisabled}
+                            class="slds-m-top_small slds-align_absolute-center" label="Next" onclick={goToStepTwo}>
+                        </lightning-button>
+                    </div>
+                    <div class="stepTwo slds-hide">
+                        <h2 class="slds-align_absolute-center">Create Compound</h2>
+                        <div class="slds-align_absolute-center">
+                            <lightning-radio-group options={options} value={value} onchange={handleChange} required>
+                            </lightning-radio-group>
+                        </div>
+                        <template if:true={compoundBoolean.create}>
+                            <lightning-record-edit-form object-api-name="Compound__c" onsubmit={saveCompound}>
+                                <lightning-messages></lightning-messages>
+                                <lightning-input-field field-name="Name" value={compoundObj.Name}
+                                    disabled={compoundObj.Disabled}></lightning-input-field>
+                                <lightning-input-field field-name="Opportunity__c" value={compoundObj.Opportunity__c}
+                                    disabled={compoundObj.Disabled} required="true"></lightning-input-field>
+                                <lightning-input-field field-name="Molecule_Type__c" value={compoundObj.Molecule_Type__c}
+                                    disabled={compoundObj.Disabled} ></lightning-input-field>
+                                    <lightning-input-field field-name="Phase_of_Development__c" value={compoundObj.Phase_of_Development__c}
+                                    disabled={compoundObj.Disabled} ></lightning-input-field>
+                                    <lightning-input-field field-name="EH_S_Requirements__c" value={compoundObj.EH_S_Requirements__c}
+                                    disabled={compoundObj.Disabled} ></lightning-input-field>
+                                    <lightning-input-field field-name="Regulatory_Class__c" value={compoundObj.Regulatory_Class__c}
+                                    disabled={compoundObj.Disabled} ></lightning-input-field>
+                                    <lightning-input-field field-name="GMP_Requirements__c" value={compoundObj.GMP_Requirements__c}
+                                    disabled={compoundObj.Disabled} ></lightning-input-field>
+                                    <!-- <lightning-input-field field-name="Product_Phase__c" value={compoundObj.Product_Phase__c}
+                                    disabled={compoundObj.Disabled} ></lightning-input-field> -->
+                                    <lightning-input-field field-name="Therapeutic_Area__c" value={compoundObj.Therapeutic_Area__c}
+                                    disabled={compoundObj.Disabled} ></lightning-input-field>
+                                <lightning-button disabled={compoundObj.Disabled} variant="success"
+                                    class="slds-m-top_small slds-align_absolute-center" label="Save Compound"
+                                    type="submit"></lightning-button>
+                            </lightning-record-edit-form>
+
+                            <lightning-file-upload label="Compound Attachments:" name="fileUploader"
+                                disabled={compoundObj.FileUploadDisabled} accept={acceptedFormats}
+                                record-id={compoundObj.Id} onuploadfinished={handleCompoundFilesUploadFinished}
+                                class="slds-align_absolute-center" multiple>
+                            </lightning-file-upload>
+
+                            <br />
+                            <div class="slds-align_absolute-center">
+                                <table class="slds-table slds-table_cell-buffer slds-table_bordered">
+                                    <thead>
+                                        <tr class="slds-line-height_reset">
+                                            <th class="" scope="col">Serial</th>
+                                            <th class="" scope="col">File Name</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <template for:each={compoundAttachments} for:item="compatt" for:index="index">
+                                            <tr key={compatt.documentId} class="slds-line-height_reset">
+                                                <td>{index}</td>
+                                                <td>{compatt.name}</td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <hr />
+                        </template>
+
+                        <!-- Update Compound -->
+                        <template if:true={compoundBoolean.update}>
+                            <lightning-record-edit-form object-api-name="Opportunity_Compound__c"
+                                onsubmit={saveExistingCompound} onsuccess={handleSuccess}>
+                                <lightning-messages></lightning-messages>
+                                <lightning-input-field field-name="Compound__c" value={compoundObj.Name}
+                                    disabled={compoundObj.Disabled}></lightning-input-field>
+                                <lightning-input-field field-name="Opportunity__c" value={compoundObj.Opportunity__c}
+                                    disabled={compoundObj.Disabled}></lightning-input-field>
+                                    <lightning-input-field field-name="Product_Class__c" value={compoundObj.Product_Class__c}
+                                        disabled={compoundObj.Disabled}></lightning-input-field>
+                                <lightning-button disabled={compoundObj.Disabled} variant="success"
+                                    class="slds-m-top_small slds-align_absolute-center" label="Save Compound"
+                                    type="submit"></lightning-button>
+                            </lightning-record-edit-form>
+                            <br />
+                            <lightning-datatable key-field="id" data={existingCompoundRecords} show-row-number-column
+                                hide-checkbox-column columns={compoundColumns}>
+                            </lightning-datatable>
+                        </template>
+                        <hr />
+                        <lightning-layout class="slds-align_absolute-center">
+                            <lightning-layout-item padding="around-small" flexibility="auto">
+                                <lightning-button class="slds-m-top_small slds-align_absolute-center" label="Previous"
+                                    onclick={goBackToStepOne}></lightning-button>
+                            </lightning-layout-item>
+
+                            <lightning-layout-item padding="around-small" flexibility="auto">
+                                <lightning-button disabled={compoundObj.NextButtonDisabled} variant="brand"
+                                    class="slds-m-top_small slds-float_right slds-p-horizontal_small slds-align_absolute-center"
+                                    label="Next" onclick={goToStepThree}></lightning-button>
+                                <lightning-button
+                                    class="slds-m-top_small slds-p-horizontal_small slds-float_right slds-align_absolute-center"
+                                    label="Skip" onclick={goToStepThree}></lightning-button>
+                            </lightning-layout-item>
+                        </lightning-layout>
+                    </div>
+                    <div class="stepThree slds-hide">
+                        <br />
+                        <h2 class="slds-align_absolute-center">Create Quote</h2>
+                        <br /><br />
+                        <lightning-record-edit-form object-api-name="Quote" onsubmit={saveQuote}>
+                            <lightning-messages>
+                            </lightning-messages>
+                            <lightning-input-field field-name="Name" value={quoteObj.Name} disabled={quoteObj.Disabled}>
+                            </lightning-input-field>
+                            <br />
+                            <lightning-input-field field-name="OpportunityId" value={quoteObj.OpportunityId}
+                                disabled={quoteObj.Disabled} required="true">
+                            </lightning-input-field>
+                            <br />
+                            
+                            <lightning-input-field field-name="Quote_due_to_Client__c" value={quoteObj.Quote_due_to_Client__c}
+                                disabled={quoteObj.Disabled}>
+                            </lightning-input-field>
+                            <br />
+                            
+                            <lightning-input-field field-name="Use_of_Product__c" value={quoteObj.Use_of_Product__c}
+                                disabled={quoteObj.Disabled} >
+                            </lightning-input-field>
+                            <br />
+                            
+                            
+                            <lightning-input-field field-name="Scope_of_Work__c" value={quoteObj.Scope_of_Work__c}
+                                disabled={quoteObj.Disabled}>
+                            </lightning-input-field>
+                            <br />
+
+                            <lightning-input-field field-name="Materials_Provided_by_Client__c" value={quoteObj.Materials_Provided_by_Client__c}
+                                disabled={quoteObj.Disabled}>
+                            </lightning-input-field>
+                            <br />
+                            
+                            <lightning-input-field field-name="Description__c" value={quoteObj.Description__c}
+                                disabled={quoteObj.Disabled}>
+                            </lightning-input-field>
+                            <br />
+                            <lightning-button disabled={quoteObj.Disabled} variant="success"
+                                class="slds-m-top_small slds-align_absolute-center" label="Save Quote" type="submit">
+                            </lightning-button>
+                        </lightning-record-edit-form>
+                        <hr />
+
+                        <lightning-file-upload label="Quote Attachments:" name="fileUploader"
+                            disabled={quoteObj.FileUploadDisabled} accept={acceptedFormats} record-id={quoteObj.Id}
+                            onuploadfinished={handleQuoteFilesUploadFinished} class="slds-align_absolute-center"
+                            multiple>
+                        </lightning-file-upload>
+                        <br />
+                        <div class="slds-align_absolute-center">
+                            <table class="slds-table slds-table_cell-buffer slds-table_bordered">
+                                <thead>
+                                    <tr class="slds-line-height_reset">
+                                        <th class="" scope="col">Serial</th>
+                                        <th class="" scope="col">File Name</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template for:each={quoteAttachments} for:item="quoteatt" for:index="index">
+                                        <tr key={quoteatt.documentId} class="slds-line-height_reset">
+                                            <td>{index}</td>
+                                            <td>{quoteatt.name}</td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <hr />
+                        <lightning-layout class="slds-align_absolute-center">
+                            <lightning-layout-item padding="around-small" flexibility="auto">
+                                <lightning-button class="slds-m-top_small slds-align_absolute-center" label="Previous"
+                                    onclick={goBackToStepTwo}></lightning-button>
+                            </lightning-layout-item>
+                            <lightning-layout-item padding="around-small" flexibility="auto">
+                                <lightning-button disabled={quoteObj.NextButtonDisabled} variant="brand"
+                                    class="slds-m-top_small slds-float_right slds-p-horizontal_small slds-align_absolute-center"
+                                    label="Next" onclick={goToStepFour}></lightning-button>
+                                <lightning-button
+                                    class="slds-m-top_small slds-p-horizontal_small slds-float_right slds-align_absolute-center"
+                                    label="Skip" onclick={goToStepFour}></lightning-button>
+                            </lightning-layout-item>
+                        </lightning-layout>
+                    </div>
+                    <div class="stepFour slds-hide">
+                        <br />
+                        <h2 class="slds-align_absolute-center">Email Feature</h2>
+                        <br /><br />
+                        <lightning-input label="From" value={emailFeatureSettings.From} onchange={setFromAddress}>
+                        </lightning-input><br />
+                        <lightning-input label="To" value={emailFeatureSettings.To} onchange={setToAddress}>
+                        </lightning-input><br />
+                        <lightning-input label="CC" value={emailFeatureSettings.CC} onchange={setCCAddress}>
+                        </lightning-input><br />
+                        <br />
+                        <div class="slds-align_absolute-center">
+                            <table class="slds-table slds-table_cell-buffer slds-table_bordered">
+                                <caption>Select Email Attachments:</caption>
+                                <thead>
+                                    <tr class="slds-line-height_reset">
+                                        <th class="" scope="col">Select</th>
+                                        <th class="" scope="col">File Name</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template for:each={opportunityAttachments} for:item="oppatt">
+                                        <tr key={oppatt.documentId} class="slds-line-height_reset">
+                                            <td>
+                                                <lightning-input type="checkbox" value={oppatt.documentId}
+                                                    onchange={selectAttachment}></lightning-input>
+                                            </td>
+                                            <td>{oppatt.name}</td>
+                                        </tr>
+                                    </template>
+                                    <template for:each={compoundAttachments} for:item="compatt">
+                                        <tr key={compatt.documentId} class="slds-line-height_reset">
+                                            <td>
+                                                <lightning-input type="checkbox" value={compatt.documentId}
+                                                    onchange={selectAttachment}></lightning-input>
+                                            </td>
+                                            <td>{compatt.name}</td>
+                                        </tr>
+                                    </template>
+                                    <template for:each={quoteAttachments} for:item="quoteatt">
+                                        <tr key={quoteatt.documentId} class="slds-line-height_reset">
+                                            <td>
+                                                <lightning-input type="checkbox" value={quoteatt.documentId}
+                                                    onchange={selectAttachment}></lightning-input>
+                                            </td>
+                                            <td>{quoteatt.name}</td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                        <lightning-layout class="slds-align_absolute-center">
+                            <lightning-layout-item padding="around-small" flexibility="auto">
+                                <lightning-button class="slds-m-top_small slds-align_absolute-center" label="Previous"
+                                    onclick={goBackToStepThree}></lightning-button>
+                            </lightning-layout-item>
+                            <lightning-layout-item padding="around-small" flexibility="auto">
+                                <lightning-button variant="success" class="slds-m-top_small slds-align_absolute-center"
+                                    label="Finish" onclick={sendEmailWithAttachments}></lightning-button>
+                            </lightning-layout-item>
+                        </lightning-layout>
+                    </div>
+                    <br />
+                    </template>
+                </div>
+            </div>
+        </section>
+        <div class="slds-backdrop slds-backdrop_open"></div>
+
+    </template>
+
+</template>

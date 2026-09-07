@@ -1,0 +1,43 @@
+<template>
+    <lightning-card>
+        <div class="slds-grid slds-grid_vertical slds-align_absolute-center slds-m-around_small">
+            <div class="slds-col">
+                <div class={color}>
+                    {accStatus}
+                </div>
+            </div>
+            <template if:true={hasReason}>
+                <div class="slds-col slds-align_absolute-center slds-m-around_small">
+                    <lightning-button
+                        label="View Detail"
+                        onclick={handleViewDetail}
+                        style="color:#627084;font-size:14px;line-height:1;letter-spacing:0.1em;"
+                        variant="brand"
+                    ></lightning-button>
+                </div>
+            </template>
+        </div>
+    </lightning-card>
+
+    <template if:true={viewDetail}>
+        <lightning-card>
+            <div class="slds-grid slds-grid_vertical slds-align_absolute-center">
+                <div class="slds-col">
+                    <template for:each={reason} for:item="item">
+                        <div key={item} class="data-card">
+                            <h4>{item}</h4>
+                        </div>
+                    </template>
+                </div>
+                <div class="slds-col slds-align_absolute-center slds-m-around_small">
+                    <lightning-button
+                        label="Ok"
+                        onclick={handleOk}
+                        style="color:#627084;font-size:14px;line-height:1;letter-spacing:0.1em;"
+                        variant="brand" 
+                    ></lightning-button>
+                </div>
+            </div>
+        </lightning-card>
+    </template>
+</template>

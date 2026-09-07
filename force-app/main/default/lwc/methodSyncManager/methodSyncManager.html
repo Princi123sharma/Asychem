@@ -1,0 +1,95 @@
+<template>
+    <lightning-card class="custom-card">
+        <!-- Custom Header Slot -->
+        <div slot="title" class="">
+            <div class="header-content">
+                
+                <div class="header-logo">
+                    <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="24" cy="24" r="24" fill="#1589ee"/>
+                        <path d="M24 12L32 20H28V28H20V20H16L24 12Z" fill="#ffffff"/>
+                        <path d="M24 36L32 28H28V20H20V28H16L24 36Z" fill="#ffffff"/>
+                        <text x="13" y="42" fill="#ffffff" font-size="10" font-family="Arial">CRM</text>
+                    </svg>
+                </div>
+                <div class="header-text">
+                    <h1 class="slds-text-heading_large">Method CRM Sync Manager</h1>
+                    <p class="slds-text-body_small header-subtitle">Seamless Data Synchronization</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="slds-p-around_medium">
+            <!-- Info Box -->
+            <div class="info-box slds-m-bottom_medium">
+                <p class="slds-text-body_regular">Configure and initiate Method CRM data synchronization for sales orders, invoices, and more. Select a date range or sync types to proceed.</p>
+            </div>
+
+            <!-- Date Range Selection -->
+            <div class="desktop-grid slds-m-bottom_large">
+                <div class="slds-col">
+                    <lightning-input
+                        type="date"
+                        name="startDate"
+                        label="Start Date"
+                        value={startDate}
+                        onchange={handleStartDateChange}
+                        disabled={isFormDisabled}
+                        required
+                        class="custom-input">
+                    </lightning-input>
+                </div>
+                <div class="slds-col">
+                    <lightning-input
+                        type="date"
+                        name="endDate"
+                        label="End Date"
+                        value={endDate}
+                        onchange={handleEndDateChange}
+                        disabled={isFormDisabled}
+                        required
+                        class="custom-input">
+                    </lightning-input>
+                </div>
+            </div>
+
+
+            <!-- Sync Type Selection -->
+            <div class="slds-m-bottom_large">
+                <lightning-radio-group
+                    name="syncTypes"
+                    label="Select Sync Type"
+                    options={syncTypes}
+                    value={selectedSyncType}
+                    onchange={handleSyncTypeChange}
+                    disabled={isFormDisabled}
+                    required
+                    class="custom-radio-group">
+                </lightning-radio-group>
+                <!-- <div class="sync-type-description">Select a sync type to include in the synchronization process if no method name is specified.</div> -->
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="button-group slds-m-bottom_large">
+                <lightning-button
+                    variant="brand"
+                    label="Start Sync"
+                    title="Start Method CRM Sync"
+                    onclick={handleSync}
+                    disabled={isSyncButtonDisabled}
+                    class="custom-button">
+                </lightning-button>
+                <template if:true={isSyncButtonDisabled}>
+                    <div class="slds-text-color_error slds-m-top_small">{validationMessage}</div>
+                </template>
+            </div>
+
+            <!-- Loading Spinner -->
+            <template if:true={isLoading}>
+                <div class="slds-is-relative slds-m-bottom_large">
+                    <lightning-spinner alternative-text="Starting sync..." size="medium"></lightning-spinner>
+                </div>
+            </template>
+        </div>
+    </lightning-card>
+</template>

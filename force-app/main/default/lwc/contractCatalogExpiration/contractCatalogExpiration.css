@@ -1,0 +1,12 @@
+.lgc-bg {
+    background-color: rgb(242, 242, 242);
+}
+.custom_list_view {
+    max-width: max-content;
+}
+ 
+.list_view_and_table_container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}

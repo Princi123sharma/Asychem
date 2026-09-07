@@ -1,0 +1,41 @@
+<template>
+    <lightning-card class="slds-p-around_medium">
+        <div class="slds-page-header slds-page-header_record-home slds-p-around_medium">
+            <div class="slds-page-header__row">
+                <div class="slds-page-header__col-title">
+                    <div class="slds-media">
+                        <div class="slds-media__figure">
+                            <span class="slds-icon_container slds-icon-standard-opportunity">
+                                <svg class="slds-icon slds-page-header__icon" aria-hidden="true">
+                                    <use xlink:href="/assets/icons/standard-sprite/svg/symbols.svg#opportunity"></use>
+                                </svg>
+                            </span>
+                        </div>
+                        <div class="slds-media__body">
+                            <div class="slds-page-header__name">
+                                <div class="slds-page-header__name-title">
+                                    <h1>
+                                        <span>Contracts</span>
+                                    </h1>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="slds-grid slds-gutters">
+            <div class="slds-col">
+                <lightning-combobox label='Expiration With' value={months} placeholder="Select Month"
+                    onchange={handleMonthsChange} options={options}></lightning-combobox>
+            </div>
+            <div class="slds-col">
+                <lightning-combobox label='View' value={contractType} placeholder="Select View As"
+                    onchange={handleContractTypeChange} options={contractOptions}></lightning-combobox>
+            </div>
+        </div>
+        <lightning-card>
+            <lightning-datatable key-field="Id" data={contractCatalog} columns={columns}></lightning-datatable>
+        </lightning-card>
+    </lightning-card>
+</template>

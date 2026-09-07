@@ -1,0 +1,17 @@
+<template>
+    
+    <lightning-card title={title} icon-name={iconname}>
+        <template if:true={isShow}>
+        <lightning-datatable
+            data={accountData}
+            columns={accountColumns}
+            key-field="Id"
+            hide-checkbox-column="true">
+        </lightning-datatable>
+    </template>
+    <template if:false={isShow}>
+        <p>  There are no Affiliated records to show</p>
+    </template>
+    </lightning-card>
+
+</template>

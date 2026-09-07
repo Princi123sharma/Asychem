@@ -1,0 +1,78 @@
+<template>
+    <article class="slds-card">
+        <div class="slds-card-wrapper">
+            <article class="slds-card">
+                <div class="slds-card__header slds-grid">
+                    <header class="slds-media slds-media_center slds-has-flexi-truncate">
+                        <div class="slds-media__body">
+                            <h2 class="slds-text-heading_medium slds-hyphenate">
+                                <lightning-icon icon-name="standard:channel_program_members"></lightning-icon>&nbsp;
+                                <span>Manage Account Team</span>
+                            </h2>
+                        </div>
+                    </header>
+                </div>
+                <div class="slds-card__body slds-align_absolute-center slds-p-vertical_medium">
+                    <lightning-button variant="brand" label="Add Team Member" onclick={showDataTable}></lightning-button>
+                </div>
+            </article>
+        </div>
+
+        <!-- Modal/Popup Box LWC starts here -->
+        <template if:true={showTable}>
+            <section role="dialog" tabindex="-1" aria-labelledby="make-modal-heading-01" aria-modal="true" aria-describedby="modal-content-id-1" class="slds-modal slds-fade-in-open slds-modal_medium">
+                <div class="slds-modal__container">
+                    <!-- Modal/Popup Box LWC header here -->
+                    <header class="slds-modal__header">
+                        <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse" title="Close" onclick={closeMainModal}>
+                            <lightning-icon icon-name="utility:close" alternative-text="close" variant="inverse" size="small"></lightning-icon>
+                            <span class="slds-assistive-text">Close</span>
+                        </button>
+                        <h2 id="modal-heading-01" class="slds-text-heading_medium slds-hyphenate">Add Account Team Member</h2>
+                    </header>
+
+                    <!-- Modal/Popup Box LWC body starts here -->
+                    <div class="slds-modal__content slds-p-around_medium" id="make-modal-content-id-1">
+                        <div if:true={showSpinner} style="margin:1rem 0rem 0rem 20rem;">
+                            <lightning-spinner class="slds-is-relative" alternative-text="...loading" variant="brand">
+                            </lightning-spinner>
+                        </div>
+
+                        <div class="slds-grid slds-card__header">
+                            <header class="slds-media slds-media_center slds-has-flexi-truncate">
+                                <div class="slds-media__body">
+                                    <h2 class="slds-truncate" title="Einstein (10+)">
+                                        <div class="slds-grid slds-gutters">
+                                            <div class="slds-col slds-size_1-of-3">
+                                                <lightning-combobox name="groupPicklist" label={groupSelectionLabel} value={selectedTeamId} options={teamsOptions} onchange={handleGroupChange}>
+                                                </lightning-combobox>
+                                            </div>
+                                        </div>
+                                    </h2>
+                                </div>
+                            </header>
+                        </div>
+
+                        <lightning-card variant="Narrow" class="cardSpinner">
+                            <div class="slds-var-p-around_small">
+                                <template if:true={isTeamAvailable}>
+                                    <template if:true={teamMembersRecords}>
+                                        <c-lwc-custom-datatable-type data={teamMembersRecords} columns={teamMemberColumns} key-field="Id" onsave={handleSave} editable="true" draft-values={draftValues} onvalueselect={handleSelection}
+                                            oncellchange={handleCellChange} suppress-bottom-bar hide-checkbox-column>
+                                        </c-lwc-custom-datatable-type>
+                                    </template>
+                                </template>
+                            </div>
+                        </lightning-card>
+                    </div>
+                    <div class="slds-modal__footer">
+                        <lightning-button label="Cancel" title="Cancel" onclick={closeMainModal} class="slds-m-left_x-small"></lightning-button>&nbsp;
+                        <lightning-button variant="brand" label="Add Members" title="Add Members" onclick={handleAddMemeberTeams} icon-name="utility:adduser"></lightning-button>
+                    </div>
+                </div>
+            </section>
+            <div class="slds-backdrop slds-backdrop_open"></div>
+        </template>
+
+    </article>
+</template>
