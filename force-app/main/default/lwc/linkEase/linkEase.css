@@ -1,0 +1,106 @@
+:host {
+    display: block;
+}
+
+.link-ease-panel {
+    background: #ffffff;
+}
+
+.upload-panel {
+    overflow: hidden;
+    border: 1px solid #d8dde6;
+    border-radius: 0.25rem;
+    background: #ffffff;
+}
+
+.file-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 2.75rem;
+    padding: 0.35rem 0.65rem 0.35rem 0.8rem;
+    border-bottom: 1px solid #e5e7eb;
+    color: #181818;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.file-heading {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.file-heading lightning-icon {
+    --slds-c-icon-color-foreground-default: #5c6b7a;
+}
+
+.drop-zone {
+    margin: 0.65rem;
+    padding: 0.9rem 0.75rem 0.75rem;
+    border: 1px dashed #8a96a3;
+    border-radius: 0.2rem;
+    background: #fbfcfd;
+    text-align: center;
+}
+
+.drop-zone lightning-input {
+    display: inline-block;
+}
+
+.drop-hint,
+.size-hint {
+    margin: 0.35rem 0 0;
+    color: #444b53;
+    font-size: 0.75rem;
+}
+
+.size-hint {
+    margin-top: 0.2rem;
+    color: #6b7280;
+    font-size: 0.68rem;
+}
+
+.selected-files {
+    margin: 0 0.65rem 0.65rem;
+    padding: 0;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.2rem;
+    list-style: none;
+}
+
+.selected-files li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.45rem 0.65rem;
+    border-bottom: 1px solid #eef0f2;
+    font-size: 0.75rem;
+}
+
+.selected-files li:last-child {
+    border-bottom: 0;
+}
+
+.selected-file-name {
+    overflow: hidden;
+    color: #0b5cab;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.selected-file-size {
+    flex: 0 0 auto;
+    color: #6b7280;
+}
+
+.upload-action {
+    display: flex;
+    justify-content: flex-end;
+    padding: 0 0.65rem 0.65rem;
+}
+
+.files-section {
+    border-color: #e5e7eb;
+}

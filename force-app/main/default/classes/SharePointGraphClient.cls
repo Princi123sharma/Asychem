@@ -8,6 +8,20 @@ public with sharing class SharePointGraphClient {
     public class DriveItem {
         public String id { get; set; }
         public String name { get; set; }
+        public Long size { get; set; }
+        public String lastModifiedDateTime { get; set; }
+        public String webUrl { get; set; }
+    }
+
+    public class DeltaItem {
+        public String id { get; set; }
+        public Boolean deleted { get; set; }
+    }
+
+    public class DeltaResult {
+        public List<DeltaItem> items { get; set; }
+        public String nextLink { get; set; }
+        public String deltaLink { get; set; }
     }
 
     public class SharePointException extends Exception {}
@@ -97,11 +111,98 @@ public with sharing class SharePointGraphClient {
         return null;
     }
 
+    /** Returns the files directly inside an existing SharePoint folder. */
+    public static List<DriveItem> listFiles(String driveId, String folderItemId) {
+        if (String.isBlank(driveId) || String.isBlank(folderItemId)) {
+            throw new SharePointException('Drive ID and folder item ID are required.');
+        }
+
+        HttpRequest request = new HttpRequest();
+        request.setEndpoint(
+            NAMED_CREDENTIAL +
+            '/v1.0/drives/' + EncodingUtil.urlEncode(driveId, 'UTF-8') +
+            '/items/' + EncodingUtil.urlEncode(folderItemId, 'UTF-8') +
+            '/children?$select=id,name,size,lastModifiedDateTime,webUrl,file&$orderby=name'
+        );
+        request.setMethod('GET');
+        request.setHeader('Accept', 'application/json');
+        request.setTimeout(TIMEOUT_MS);
+
+        HttpResponse response = new Http().send(request);
+        if (response.getStatusCode() != 200) {
+            throw new SharePointException(
+                'Could not retrieve SharePoint files. HTTP ' +
+                response.getStatusCode() + ': ' + response.getBody()
+            );
+        }
+
+        Map<String, Object> responseMap = (Map<String, Object>) JSON.deserializeUntyped(response.getBody());
+        List<Object> values = (List<Object>) responseMap.get('value');
+        List<DriveItem> files = new List<DriveItem>();
+        if (values == null) return files;
+        for (Object value : values) {
+            Map<String, Object> item = (Map<String, Object>) value;
+            // Folders are also children; LinkEase displays files only.
+            if (item.get('file') == null) continue;
+            files.add((DriveItem) JSON.deserialize(JSON.serialize(item), DriveItem.class));
+        }
+        return files;
+    }
+
+    public static DeltaResult getDelta(String driveId, String deltaLink) {
+        if (String.isBlank(driveId) && String.isBlank(deltaLink)) {
+            throw new SharePointException('Drive ID or delta link is required.');
+        }
+
+        HttpRequest request = new HttpRequest();
+        request.setEndpoint(String.isBlank(deltaLink)
+            ? NAMED_CREDENTIAL + '/v1.0/drives/' + EncodingUtil.urlEncode(driveId, 'UTF-8') + '/root/delta'
+            : toNamedCredentialEndpoint(deltaLink));
+        request.setMethod('GET');
+        request.setHeader('Accept', 'application/json');
+        request.setTimeout(TIMEOUT_MS);
+
+        HttpResponse response = new Http().send(request);
+        if (response.getStatusCode() != 200) {
+            throw new SharePointException(
+                'Could not retrieve SharePoint changes. HTTP ' +
+                response.getStatusCode() + ': ' + response.getBody()
+            );
+        }
+
+        Map<String, Object> responseMap =
+            (Map<String, Object>) JSON.deserializeUntyped(response.getBody());
+        DeltaResult result = new DeltaResult();
+        result.items = new List<DeltaItem>();
+        result.nextLink = responseMap.containsKey('@odata.nextLink')
+            ? String.valueOf(responseMap.get('@odata.nextLink')) : null;
+        result.deltaLink = responseMap.containsKey('@odata.deltaLink')
+            ? String.valueOf(responseMap.get('@odata.deltaLink')) : null;
+        List<Object> values = (List<Object>) responseMap.get('value');
+        if (values == null) return result;
+
+        for (Object value : values) {
+            Map<String, Object> itemMap = (Map<String, Object>) value;
+            DeltaItem item = new DeltaItem();
+            item.id = itemMap.containsKey('id') ? String.valueOf(itemMap.get('id')) : null;
+            item.deleted = itemMap.containsKey('deleted') && itemMap.get('deleted') != null;
+            result.items.add(item);
+        }
+        return result;
+    }
+
+    private static String toNamedCredentialEndpoint(String graphLink) {
+        Integer hostEnd = graphLink.indexOf('.com');
+        return hostEnd >= 0
+            ? NAMED_CREDENTIAL + graphLink.substring(hostEnd + 4)
+            : graphLink;
+    }
+
     /**
      * Uploads a Salesforce File version to an existing SharePoint folder.
      * A file with the same name is replaced by Microsoft Graph.
      */
-    public static void uploadFile(
+    public static DriveItem uploadFile(
         String driveId,
         String folderItemId,
         String fileName,
@@ -144,5 +245,7 @@ public with sharing class SharePointGraphClient {
                 response.getStatusCode() + ': ' + response.getBody()
             );
         }
+
+        return (DriveItem) JSON.deserialize(response.getBody(), DriveItem.class);
     }
 }

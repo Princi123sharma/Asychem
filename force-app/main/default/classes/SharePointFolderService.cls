@@ -29,10 +29,6 @@ public with sharing class SharePointFolderService {
             LIMIT 1
         ];
 
-        if (!String.isBlank(account.SharePoint_Folder_Id__c)) {
-            return;
-        }
-
         String accountDisplayName = String.isNotBlank(account.Nick_Name__c)
             ? account.Nick_Name__c
             : account.Name;
@@ -41,32 +37,33 @@ public with sharing class SharePointFolderService {
             accountDisplayName + ' ' + String.valueOf(Date.today().year())
         );
 
-        SharePointGraphClient.DriveItem accountFolder =
-            SharePointGraphClient.createFolder(
-                config.Drive_Id__c,
-                config.Accounts_Parent_Item_Id__c,
-                accountFolderName
-            );
+        // Always resolve from the configured Accounts parent. This repairs
+        // stale field values and ensures uploads use this Account's folder.
+        String accountFolderId = getOrCreateFolderId(
+            config.Drive_Id__c,
+            config.Accounts_Parent_Item_Id__c,
+            accountFolderName
+        );
+        if (String.isBlank(accountFolderId)) {
+            throw new SharePointFolderException('Unable to resolve the Account SharePoint folder.');
+        }
 
-        SharePointGraphClient.DriveItem contractsFolder =
-            SharePointGraphClient.createFolder(
-                config.Drive_Id__c,
-                accountFolder.id,
-                'Legal Contracts'
-            );
-
-        SharePointGraphClient.DriveItem opportunitiesFolder =
-            SharePointGraphClient.createFolder(
-                config.Drive_Id__c,
-                accountFolder.id,
-                'Opportunities'
-            );
+        String contractsFolderId = getOrCreateFolderId(
+            config.Drive_Id__c,
+            accountFolderId,
+            'Contracts'
+        );
+        String opportunitiesFolderId = getOrCreateFolderId(
+            config.Drive_Id__c,
+            accountFolderId,
+            'Opportunities'
+        );
 
         update new Account(
             Id = account.Id,
-            SharePoint_Folder_Id__c = accountFolder.id,
-            SharePoint_Contract_Folder_Id__c = contractsFolder.id,
-            SharePoint_Opportunities_Folder_Id__c = opportunitiesFolder.id
+            SharePoint_Folder_Id__c = accountFolderId,
+            SharePoint_Contract_Folder_Id__c = contractsFolderId,
+            SharePoint_Opportunities_Folder_Id__c = opportunitiesFolderId
         );
     }
 
@@ -104,6 +101,60 @@ public with sharing class SharePointFolderService {
         }
 
         return 'Misc';
+    }
+
+    /** Returns the configured central folder item ID for a Contract's routing rule. */
+    public static String resolveCentralContractFolderId(
+        SharePoint_Config__mdt config,
+        String contractType,
+        String contractStatus
+    ) {
+        if (config == null) return null;
+
+        String folderName = resolveContractFolderName(contractType, contractStatus);
+        if (folderName == 'CDA') {
+            return String.isNotBlank(config.CDA_Folder_Item_Id__c)
+                ? config.CDA_Folder_Item_Id__c
+                : config.CDA_Item_ID__c;
+        }
+        if (folderName == 'LOI') {
+            return String.isNotBlank(config.LOI_Folder_Item_Id__c)
+                ? config.LOI_Folder_Item_Id__c
+                : config.LOI_Item_ID__c;
+        }
+        if (folderName == 'MSA') {
+            return String.isNotBlank(config.MSA_Folder_Item_Id__c)
+                ? config.MSA_Folder_Item_Id__c
+                : config.MSA_Item_ID__c;
+        }
+        if (folderName == 'CSA') {
+            return String.isNotBlank(config.CSA_Folder_Item_Id__c)
+                ? config.CSA_Folder_Item_Id__c
+                : config.CSA_Item_ID__c;
+        }
+        if (folderName == 'QAA') {
+            return String.isNotBlank(config.QAA_Folder_Item_Id__c)
+                ? config.QAA_Folder_Item_Id__c
+                : config.QAA_Item_ID__c;
+        }
+        if (folderName == 'Executive Review') {
+            return String.isNotBlank(config.Executive_Review_Folder_Item_Id__c)
+                ? config.Executive_Review_Folder_Item_Id__c
+                : config.Executive_Review_Item_ID__c;
+        }
+        if (folderName == 'Client Review') {
+            return String.isNotBlank(config.Client_Review_Folder_Item_Id__c)
+                ? config.Client_Review_Folder_Item_Id__c
+                : config.Client_Review_Item_ID__c;
+        }
+        if (folderName == 'Internal Review') {
+            return String.isNotBlank(config.Internal_Review_Folder_Item_Id__c)
+                ? config.Internal_Review_Folder_Item_Id__c
+                : config.Internal_Review_Item_ID__c;
+        }
+        return String.isNotBlank(config.Misc_Folder_Item_Id__c)
+            ? config.Misc_Folder_Item_Id__c
+            : config.Misc_Item_ID__c;
     }
 
     public static String getOrCreateFolderId(

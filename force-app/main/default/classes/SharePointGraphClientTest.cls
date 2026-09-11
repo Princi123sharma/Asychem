@@ -71,5 +71,53 @@ private class SharePointGraphClientTest {
         System.assertEquals('LOI', SharePointFolderService.resolveContractFolderName('LOI', 'Active'));
         System.assertEquals('Executive Review', SharePointFolderService.resolveContractFolderName('Not Checked', 'Executive Review'));
         System.assertEquals('Misc', SharePointFolderService.resolveContractFolderName('Not Checked', 'Draft'));
+
+        SharePoint_Config__mdt config = new SharePoint_Config__mdt(
+            CDA_Item_ID__c = 'legacy-central-cda-folder',
+            LOI_Item_ID__c = 'legacy-central-loi-folder',
+            MSA_Item_ID__c = 'legacy-central-msa-folder',
+            CSA_Item_ID__c = 'legacy-central-csa-folder',
+            QAA_Item_ID__c = 'legacy-central-qaa-folder',
+            Executive_Review_Item_ID__c = 'legacy-executive-review-folder',
+            Client_Review_Item_ID__c = 'legacy-client-review-folder',
+            Internal_Review_Item_ID__c = 'legacy-internal-review-folder',
+            Misc_Item_ID__c = 'legacy-misc-folder'
+        );
+        System.assertEquals(
+            'legacy-central-cda-folder',
+            SharePointFolderService.resolveCentralContractFolderId(config, '2-way CDA', 'Active')
+        );
+        System.assertEquals(
+            'legacy-central-loi-folder',
+            SharePointFolderService.resolveCentralContractFolderId(config, 'LOI', 'Active')
+        );
+        System.assertEquals(
+            'legacy-central-msa-folder',
+            SharePointFolderService.resolveCentralContractFolderId(config, 'MSA', 'Active')
+        );
+        System.assertEquals(
+            'legacy-central-csa-folder',
+            SharePointFolderService.resolveCentralContractFolderId(config, 'CSA', 'Active')
+        );
+        System.assertEquals(
+            'legacy-central-qaa-folder',
+            SharePointFolderService.resolveCentralContractFolderId(config, 'QAA', 'Active')
+        );
+        System.assertEquals(
+            'legacy-executive-review-folder',
+            SharePointFolderService.resolveCentralContractFolderId(config, 'Not Checked', 'Executive Review')
+        );
+        System.assertEquals(
+            'legacy-client-review-folder',
+            SharePointFolderService.resolveCentralContractFolderId(config, 'Not Checked', 'Client Review')
+        );
+        System.assertEquals(
+            'legacy-internal-review-folder',
+            SharePointFolderService.resolveCentralContractFolderId(config, 'Not Checked', 'Internal Review')
+        );
+        System.assertEquals(
+            'legacy-misc-folder',
+            SharePointFolderService.resolveCentralContractFolderId(config, 'Not Checked', 'Draft')
+        );
     }
 }

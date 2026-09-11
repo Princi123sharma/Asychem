@@ -1,5 +1,8 @@
 public with sharing class SharePointFileTriggerHandler {
+    public static Boolean suppressUpload = false;
+
     public static void handleAfterInsert(List<ContentDocumentLink> links) {
+        if (suppressUpload) return;
         Map<Id, Set<Id>> documentToEntityIds = new Map<Id, Set<Id>>();
 
         for (ContentDocumentLink link : links) {

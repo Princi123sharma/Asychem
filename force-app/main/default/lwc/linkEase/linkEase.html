@@ -1,0 +1,84 @@
+<template>
+    <lightning-card title="LinkEase" icon-name="utility:share_file">
+        <div class="link-ease-panel slds-p-horizontal_small slds-p-bottom_small">
+            <section class="upload-panel" aria-label="Upload files">
+                <div class="file-header">
+                    <div class="file-heading">
+                        <lightning-icon icon-name="utility:attach" size="x-small"></lightning-icon>
+                        <span>Files ({files.length})</span>
+                    </div>
+                    <lightning-button-icon
+                        icon-name="utility:down"
+                        alternative-text="File actions"
+                        title="File actions"
+                        variant="bare">
+                    </lightning-button-icon>
+                </div>
+
+                <div class="drop-zone">
+                    <lightning-input
+                        type="file"
+                        label="Upload files"
+                        variant="label-hidden"
+                        multiple
+                        disabled={isUploading}
+                        onchange={handleFileChange}>
+                    </lightning-input>
+                    <p class="drop-hint">Or drop files</p>
+                    <p class="size-hint">Maximum 2 MB per file</p>
+                </div>
+
+                <template if:true={hasFiles}>
+                    <ul class="selected-files" aria-label="Selected files">
+                        <template for:each={files} for:item="file">
+                            <li key={file.name}>
+                                <span class="selected-file-name">{file.name}</span>
+                                <span class="selected-file-size">{file.sizeLabel}</span>
+                            </li>
+                        </template>
+                    </ul>
+                </template>
+
+                <div class="upload-action">
+                    <lightning-button variant="brand" label="Upload to SharePoint"
+                        onclick={handleUpload} disabled={uploadDisabled}>
+                    </lightning-button>
+                </div>
+            </section>
+
+            <template if:true={isUploading}>
+                <lightning-spinner alternative-text="Uploading files to SharePoint" size="small"></lightning-spinner>
+                <p class="slds-text-body_small slds-m-top_small">{uploadStatus}</p>
+            </template>
+
+            <div class="files-section slds-m-top_medium slds-border_top">
+                <div class="slds-grid slds-grid_align-spread slds-m-top_small slds-m-bottom_x-small">
+                    <h2 class="slds-text-heading_small">SharePoint files</h2>
+                    <lightning-button-icon icon-name="utility:refresh" alternative-text="Refresh files"
+                        title="Refresh files" onclick={loadFiles} disabled={isLoadingFiles}>
+                    </lightning-button-icon>
+                </div>
+                <template if:true={isLoadingFiles}>
+                    <lightning-spinner alternative-text="Loading SharePoint files" size="small"></lightning-spinner>
+                </template>
+                <template if:true={hasSharePointFiles}>
+                    <ul class="slds-has-dividers_bottom-space">
+                        <template for:each={sharePointFiles} for:item="file">
+                            <li key={file.id} class="slds-item slds-p-vertical_x-small">
+                                <lightning-icon icon-name="doctype:attachment" size="x-small" class="slds-m-right_x-small"></lightning-icon>
+                                <template if:true={file.webUrl}>
+                                    <a href={file.webUrl} target="_blank" rel="noopener">{file.name}</a>
+                                </template>
+                                <template if:false={file.webUrl}>{file.name}</template>
+                                <span class="slds-text-color_weak slds-m-left_small">{file.sizeLabel}</span>
+                            </li>
+                        </template>
+                    </ul>
+                </template>
+                <template if:true={showNoFilesMessage}>
+                    <p class="slds-text-body_small slds-text-color_weak">No files are currently in this SharePoint folder.</p>
+                </template>
+            </div>
+        </div>
+    </lightning-card>
+</template>

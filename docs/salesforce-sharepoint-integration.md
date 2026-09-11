@@ -155,19 +155,19 @@ The record must contain these values:
 |---|---|
 | `Drive_Id__c` | SharePoint document library drive ID. |
 | `Accounts_Parent_Item_Id__c` | Parent item ID under which Account folders are created. |
-| `CDA_Item_ID__c` | Central CDA folder item ID. |
-| `LOI_Item_ID__c` | Central LOI folder item ID. |
-| `MSA_Item_ID__c` | Central MSA folder item ID. |
-| `CSA_Item_ID__c` | Central CSA folder item ID. |
-| `QAA_Item_ID__c` | Central QAA folder item ID. |
-| `Executive_Review_Item_ID__c` | Central Executive Review folder item ID. |
-| `Client_Review_Item_ID__c` | Central Client Review folder item ID. |
-| `Internal_Review_Item_ID__c` | Central Internal Review folder item ID. |
-| `Misc_Item_ID__c` | Central Misc folder item ID. |
+| `CDA_Folder_Item_Id__c` | Central CDA folder item ID. |
+| `LOI_Folder_Item_Id__c` | Central LOI folder item ID. |
+| `MSA_Folder_Item_Id__c` | Central MSA folder item ID. |
+| `CSA_Folder_Item_Id__c` | Central CSA folder item ID. |
+| `QAA_Folder_Item_Id__c` | Central QAA folder item ID. |
+| `Executive_Review_Folder_Item_Id__c` | Central Executive Review folder item ID. |
+| `Client_Review_Folder_Item_Id__c` | Central Client Review folder item ID. |
+| `Internal_Review_Folder_Item_Id__c` | Central Internal Review folder item ID. |
+| `Misc_Folder_Item_Id__c` | Central Misc folder item ID. |
 
 #### Repository alignment check
 
-The repository currently contains custom metadata field files named `*_Folder_Item_Id__c`, while the Apex classes reference `*_Item_ID__c`. Before deployment, verify the actual field API names in the target org and align either the metadata field names or the Apex references. Also verify that `Drive_Id__c` and `Accounts_Parent_Item_Id__c` exist. This is a deployment prerequisite, not a runtime configuration detail.
+The Apex classes use the `*_Folder_Item_Id__c` API names defined by this repository's custom metadata fields. Also verify that `Drive_Id__c` and `Accounts_Parent_Item_Id__c` exist in the target org. This is a deployment prerequisite, not a runtime configuration detail.
 
 ### 7.3 Account fields
 
@@ -188,6 +188,29 @@ Verify that the Account object in the target org contains the three SharePoint I
 11. Test a duplicate file name, an unsupported extension, a file over 50 MB, and a failed Graph response.
 12. Confirm that debug logs, queueable jobs, and SharePoint audit logs are available to the support team.
 
+### 8.1 SharePoint deletion synchronization
+
+The Salesforce File upload path stores a `SharePoint_File_Link__c` mapping after
+Microsoft Graph returns the uploaded DriveItem ID. Schedule the deletion poller
+after deploying the mapping objects and Apex classes:
+
+```apex
+System.schedule(
+  'SharePoint deletion sync',
+  '0 0 * * * ?',
+  new SharePointDeletionSyncScheduler()
+);
+```
+
+The poller uses the Microsoft Graph delta API and deletes only the matching
+`ContentDocumentLink` when a mapped SharePoint item is reported as deleted. It
+does not delete the Salesforce `ContentDocument`, because that file may be
+linked to other Salesforce records.
+
+LinkEase uploads are intentionally direct-to-SharePoint and do not create
+Salesforce Files. They therefore do not have a Salesforce `ContentDocumentLink`
+to delete; the LinkEase list reflects their SharePoint state on the next load.
+
 ## 9. End-to-end validation procedure
 
 Run this procedure first in a sandbox or partial-copy sandbox. Use a dedicated test Account and test SharePoint folders. Record the Salesforce org, test record IDs, SharePoint URLs/item IDs, test user, timestamp, and result for every step.
@@ -202,10 +225,13 @@ Run this procedure first in a sandbox or partial-copy sandbox. Use a dedicated t
 
 ```sql
 SELECT DeveloperName, Drive_Id__c, Accounts_Parent_Item_Id__c,
-       CDA_Item_ID__c, LOI_Item_ID__c, MSA_Item_ID__c,
-       CSA_Item_ID__c, QAA_Item_ID__c,
-       Executive_Review_Item_ID__c, Client_Review_Item_ID__c,
-       Internal_Review_Item_ID__c, Misc_Item_ID__c
+       CDA_Folder_Item_Id__c, LOI_Folder_Item_Id__c,
+       MSA_Folder_Item_Id__c, CSA_Folder_Item_Id__c,
+       QAA_Folder_Item_Id__c,
+       Executive_Review_Folder_Item_Id__c,
+       Client_Review_Folder_Item_Id__c,
+       Internal_Review_Folder_Item_Id__c,
+       Misc_Folder_Item_Id__c
 FROM SharePoint_Config__mdt
 WHERE DeveloperName = 'Default'
 ```
