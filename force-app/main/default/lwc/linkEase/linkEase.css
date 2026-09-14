@@ -101,6 +101,159 @@
     padding: 0 0.65rem 0.65rem;
 }
 
-.files-section {
-    border-color: #e5e7eb;
+.library-section {
+    padding-top: 0.5rem;
+}
+
+.library-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    min-height: 2rem;
+}
+
+.breadcrumb {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    min-width: 0;
+    color: #323130;
+    font-size: 0.8125rem;
+}
+
+.breadcrumb-item {
+    display: inline-flex;
+    align-items: center;
+}
+
+.breadcrumb-link,
+.breadcrumb-current {
+    overflow: hidden;
+    max-width: 10rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #323130;
+    font: inherit;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.breadcrumb-link {
+    cursor: pointer;
+}
+
+.breadcrumb-link:hover {
+    color: #0b5cab;
+    text-decoration: underline;
+}
+
+.breadcrumb-current {
+    font-weight: 600;
+}
+
+.breadcrumb-sep {
+    margin: 0 0.35rem;
+    color: #605e5c;
+}
+
+.view-chip {
+    display: inline-flex;
+    align-items: center;
+    margin: 0.55rem 0 0.4rem;
+    padding: 0.2rem 0.7rem;
+    border-radius: 1rem;
+    background: #deecf9;
+    color: #0b5cab;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.library-table {
+    width: 100%;
+    border-collapse: collapse;
+    color: #323130;
+    font-size: 0.8125rem;
+}
+
+.library-table th {
+    padding: 0.45rem 0.5rem;
+    border-bottom: 1px solid #edebe9;
+    color: #605e5c;
+    font-weight: 600;
+    text-align: left;
+}
+
+.library-table td {
+    padding: 0.45rem 0.5rem;
+    border-bottom: 1px solid #f3f2f1;
+    vertical-align: middle;
+}
+
+.library-table tbody tr:hover {
+    background: #faf9f8;
+}
+
+.name-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.folder-icon,
+.file-icon {
+    width: 1.15rem;
+    height: 0.95rem;
+    flex: 0 0 auto;
+    border-radius: 0.1rem 0.1rem 0.12rem 0.12rem;
+}
+
+.folder-icon {
+    background:
+        linear-gradient(#ffb900 0 0.22rem, transparent 0.22rem) top left / 0.55rem 100% no-repeat,
+        linear-gradient(#ffb900, #ffb900);
+}
+
+.file-icon {
+    border: 1px solid #c8c6c4;
+    background:
+        linear-gradient(#fff 0 0) padding-box,
+        linear-gradient(135deg, #fff 50%, #c8c6c4 50%) 100% 0 / 0.35rem 0.35rem no-repeat;
+}
+
+.name-link,
+.name-text {
+    overflow: hidden;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #0b5cab;
+    font: inherit;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.name-link {
+    cursor: pointer;
+}
+
+.name-link:hover {
+    text-decoration: underline;
+}
+
+.meta-cell {
+    color: #605e5c;
+    white-space: nowrap;
+}
+
+.modified-by {
+    display: inline-block;
+    padding: 0.1rem 0.45rem;
+    border-radius: 0.75rem;
+    background: #f3f2f1;
+    color: #323130;
+    white-space: nowrap;
 }

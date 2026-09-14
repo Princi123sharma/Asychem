@@ -1,12 +1,16 @@
 @IsTest
 private class LinkEaseControllerTest {
+    private static Set<String> contractUploadTargets;
     private class UploadMock implements HttpCalloutMock {
         public HttpResponse respond(HttpRequest request) {
             System.assertEquals('PUT', request.getMethod());
             System.assert(request.getEndpoint().contains('/items/account-folder:/linkease.txt:/content'));
             HttpResponse response = new HttpResponse();
             response.setStatusCode(201);
-            response.setBody('{"id":"sharepoint-item-id","name":"linkease.txt"}');
+            response.setBody(
+                '{"id":"sharepoint-item-id","name":"linkease.txt","file":{},' +
+                '"lastModifiedBy":{"application":{"displayName":"SharePoint App"}}}'
+            );
             return response;
         }
     }
@@ -23,15 +27,20 @@ private class LinkEaseControllerTest {
     private class ContractFolderUploadMock implements HttpCalloutMock {
         public HttpResponse respond(HttpRequest request) {
             System.assertEquals('PUT', request.getMethod());
-            System.assert(
-                request.getEndpoint().contains('/items/account-contract-folder:/contract.txt:/content')
-                    || request.getEndpoint().contains('/items/central-cda-folder:/contract.txt:/content'),
-                'Unexpected Contract upload target: ' + request.getEndpoint()
-            );
+            if (request.getEndpoint().contains('/items/account-contract-folder:/contract.txt:/content')) {
+                contractUploadTargets.add('account-contract-folder');
+            } else if (request.getEndpoint().contains('/items/central-cda-folder:/contract.txt:/content')) {
+                contractUploadTargets.add('central-cda-folder');
+            } else {
+                System.assert(false, 'Unexpected Contract upload target: ' + request.getEndpoint());
+            }
 
             HttpResponse response = new HttpResponse();
             response.setStatusCode(201);
-            response.setBody('{"id":"sharepoint-item-id","name":"contract.txt"}');
+            response.setBody(
+                '{"id":"sharepoint-item-id","name":"contract.txt","file":{},' +
+                '"lastModifiedBy":{"application":{"displayName":"SharePoint App"}}}'
+            );
             return response;
         }
     }
@@ -66,6 +75,43 @@ private class LinkEaseControllerTest {
             HttpResponse response = new HttpResponse();
             response.setStatusCode(200);
             response.setBody('{"value":[{"id":"file-id","name":"existing.pdf","size":1024,"webUrl":"https://example.test/file","file":{}},{"id":"folder-id","name":"Subfolder","folder":{}}]}');
+            return response;
+        }
+    }
+
+    private class FolderTreeMock implements HttpCalloutMock {
+        public HttpResponse respond(HttpRequest request) {
+            System.assertEquals('GET', request.getMethod());
+            System.assert(request.getEndpoint().contains('/items/account-folder/children'));
+            HttpResponse response = new HttpResponse();
+            response.setStatusCode(200);
+            response.setBody(
+                '{"value":[' +
+                '{"id":"contracts-folder","name":"Contracts","folder":{},' +
+                '"lastModifiedDateTime":"2026-09-11T12:54:00Z",' +
+                '"lastModifiedBy":{"application":{"displayName":"SharePoint App"}}},' +
+                '{"id":"opportunities-folder","name":"Opportunities","folder":{},' +
+                '"lastModifiedDateTime":"2026-09-11T12:54:00Z",' +
+                '"lastModifiedBy":{"application":{"displayName":"SharePoint App"}}},' +
+                '{"id":"account-file","name":"account-site (11).csv","size":1024,"file":{},' +
+                '"lastModifiedDateTime":"2026-09-11T12:54:00Z",' +
+                '"lastModifiedBy":{"application":{"displayName":"SharePoint App"}}}' +
+                ']}'
+            );
+            return response;
+        }
+    }
+
+    private class NestedFolderMock implements HttpCalloutMock {
+        public HttpResponse respond(HttpRequest request) {
+            System.assertEquals('GET', request.getMethod());
+            System.assert(request.getEndpoint().contains('/items/contracts-folder/children'));
+            HttpResponse response = new HttpResponse();
+            response.setStatusCode(200);
+            response.setBody(
+                '{"value":[{"id":"contract-file","name":"contract.pdf","size":2048,"file":{},' +
+                '"lastModifiedBy":{"user":{"displayName":"Aryan Chopra"}}}]}'
+            );
             return response;
         }
     }
@@ -126,6 +172,7 @@ private class LinkEaseControllerTest {
     static void uploadsContractFilesToAccountAndCentralCdaFolders() {
         Account accountRecord = new Account(
             Name = 'Contract Upload Parent',
+            Nick_Name__c = 'Contract Upload Parent',
             SharePoint_Folder_Id__c = 'account-folder',
             SharePoint_Contract_Folder_Id__c = 'account-contract-folder'
         );
@@ -138,15 +185,25 @@ private class LinkEaseControllerTest {
         );
         insert contractRecord;
 
+        contractUploadTargets = new Set<String>();
+        // Match production config: central IDs live on *Item_ID__c, not *Folder_Item_Id__c.
         LinkEaseController.configOverride = new SharePoint_Config__mdt(
             Drive_Id__c = 'drive-id',
-            CDA_Folder_Item_Id__c = 'central-cda-folder'
+            CDA_Item_ID__c = 'central-cda-folder'
         );
         Test.setMock(HttpCalloutMock.class, new ContractFolderUploadMock());
 
         Test.startTest();
-        LinkEaseController.uploadFile(contractRecord.Id, 'contract.txt', 'Y29udHJhY3Q=');
+        LinkEaseController.UploadResult result = LinkEaseController.uploadFile(
+            contractRecord.Id, 'contract.txt', 'Y29udHJhY3Q='
+        );
         Test.stopTest();
+
+        System.assertEquals(2, contractUploadTargets.size(),
+            'Contract files must upload to the Account Contracts folder and the central type folder.');
+        System.assert(contractUploadTargets.contains('account-contract-folder'));
+        System.assert(contractUploadTargets.contains('central-cda-folder'));
+        System.assertNotEquals(null, result.driveItemId);
     }
 
     @IsTest
@@ -199,6 +256,52 @@ private class LinkEaseControllerTest {
         System.assertEquals(1, files.size());
         System.assertEquals('existing.pdf', files[0].name);
         System.assertEquals(1024, files[0].size);
+    }
+
+    @IsTest
+    static void returnsTheAccountFolderContentsForTheLibraryView() {
+        Account accountRecord = new Account(
+            Name = 'Tree Parent', Nick_Name__c = 'Tree Parent',
+            SharePoint_Folder_Id__c = 'account-folder'
+        );
+        insert accountRecord;
+        LinkEaseController.configOverride = new SharePoint_Config__mdt(Drive_Id__c = 'drive-id');
+        Test.setMock(HttpCalloutMock.class, new FolderTreeMock());
+
+        Test.startTest();
+        LinkEaseController.SharePointFolder tree = LinkEaseController.getFolderTree(accountRecord.Id);
+        Test.stopTest();
+
+        System.assertEquals('Tree Parent 2026', tree.name);
+        System.assertEquals(3, tree.children.size());
+        System.assertEquals('Contracts', tree.children[0].name);
+        System.assertEquals(true, tree.children[0].isFolder);
+        System.assertEquals('SharePoint App', tree.children[0].lastModifiedBy);
+        System.assertEquals(0, tree.children[0].children.size());
+        System.assertEquals('account-site (11).csv', tree.children[2].name);
+        System.assertEquals(false, tree.children[2].isFolder);
+    }
+
+    @IsTest
+    static void listsANestedFolderWhenOpenedFromTheLibrary() {
+        Account accountRecord = new Account(
+            Name = 'Nested Parent', Nick_Name__c = 'Nested Parent',
+            SharePoint_Folder_Id__c = 'account-folder'
+        );
+        insert accountRecord;
+        LinkEaseController.configOverride = new SharePoint_Config__mdt(Drive_Id__c = 'drive-id');
+        Test.setMock(HttpCalloutMock.class, new NestedFolderMock());
+
+        Test.startTest();
+        LinkEaseController.SharePointFolder folder = LinkEaseController.getFolderContents(
+            accountRecord.Id, 'contracts-folder'
+        );
+        Test.stopTest();
+
+        System.assertEquals('contracts-folder', folder.id);
+        System.assertEquals(1, folder.children.size());
+        System.assertEquals('contract.pdf', folder.children[0].name);
+        System.assertEquals('Aryan Chopra', folder.children[0].lastModifiedBy);
     }
 
     @IsTest

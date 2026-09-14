@@ -27,6 +27,60 @@ public with sharing class LinkEaseController {
         @AuraEnabled public String webUrl { get; set; }
     }
 
+    public class SharePointFolder {
+        @AuraEnabled public String id { get; set; }
+        @AuraEnabled public String name { get; set; }
+        @AuraEnabled public Boolean isFolder { get; set; }
+        @AuraEnabled public Long size { get; set; }
+        @AuraEnabled public String lastModifiedDateTime { get; set; }
+        @AuraEnabled public String lastModifiedBy { get; set; }
+        @AuraEnabled public String webUrl { get; set; }
+        @AuraEnabled public List<SharePointFolder> children { get; set; }
+    }
+
+    @AuraEnabled
+    public static SharePointFolder getFolderTree(Id recordId) {
+        return getFolderContents(recordId, null);
+    }
+
+    @AuraEnabled
+    public static SharePointFolder getFolderContents(Id recordId, String folderItemId) {
+        if (recordId == null) throwHandled('A record ID is required.');
+        SharePoint_Config__mdt config = getConfig();
+        if (config == null || String.isBlank(config.Drive_Id__c)) {
+            throwHandled('SharePoint is not configured. Contact your administrator.');
+        }
+
+        Id accountId = getAccountId(recordId);
+        Account accountRecord = getAccountWithFolders(accountId);
+        if (String.isBlank(accountRecord.SharePoint_Folder_Id__c)) {
+            try {
+                SharePointFolderService.createAccountFolders(accountId);
+                accountRecord = getAccountWithFolders(accountId);
+            } catch (Exception exceptionRecord) {
+                throwHandled('Unable to create the Account SharePoint folder: ' + exceptionRecord.getMessage());
+            }
+        }
+
+        String rootFolderId = resolveAccountFolderId(accountRecord, config);
+        if (String.isBlank(rootFolderId)) {
+            throwHandled('No SharePoint folder is available for this record.');
+        }
+
+        String accountDisplayName = String.isNotBlank(accountRecord.Nick_Name__c)
+            ? accountRecord.Nick_Name__c
+            : accountRecord.Name;
+        Boolean listingRoot = String.isBlank(folderItemId) || folderItemId == rootFolderId;
+        SharePointFolder folder = new SharePointFolder();
+        folder.id = listingRoot ? rootFolderId : folderItemId;
+        folder.name = listingRoot
+            ? sanitizeFolderName(accountDisplayName + ' ' + String.valueOf(Date.today().year()))
+            : null;
+        folder.isFolder = true;
+        folder.children = listChildren(config.Drive_Id__c, folder.id);
+        return folder;
+    }
+
     @AuraEnabled
     public static List<SharePointFile> getFiles(Id recordId) {
         if (recordId == null) throwHandled('A record ID is required.');
@@ -92,41 +146,48 @@ public with sharing class LinkEaseController {
             throwHandled('No SharePoint folder is available for this record.');
         }
 
-        try {
-            SharePointGraphClient.DriveItem uploadedFile;
-            for (String folderId : folderIds) {
+        SharePointGraphClient.DriveItem uploadedFile;
+        List<String> failedFolders = new List<String>();
+        for (String folderId : folderIds) {
+            try {
                 SharePointGraphClient.DriveItem uploadedItem = SharePointGraphClient.uploadFile(
                     config.Drive_Id__c, folderId, fileName, fileData
                 );
-                // folderItemId below identifies the first target folder, so return
-                // the file item created in that same folder.
-                if (folderId == folderIds[0]) {
-                    uploadedFile = uploadedItem;
-                }
+                if (uploadedFile == null) uploadedFile = uploadedItem;
+            } catch (Exception exceptionRecord) {
+                failedFolders.add(folderId + ': ' + exceptionRecord.getMessage());
             }
-
-            UploadResult result = new UploadResult();
-            result.fileName = fileName;
-            result.driveItemId = uploadedFile == null ? null : uploadedFile.id;
-            result.folderItemId = folderIds[0];
-            result.message = 'Uploaded to SharePoint.';
-            return result;
-        } catch (Exception exceptionRecord) {
-            throwHandled('SharePoint upload failed: ' + exceptionRecord.getMessage());
-            return null;
         }
+
+        if (uploadedFile == null) {
+            throwHandled(
+                'SharePoint upload failed: ' +
+                (failedFolders.isEmpty() ? 'No SharePoint folder accepted the file.' : failedFolders[0])
+            );
+        }
+        if (!failedFolders.isEmpty()) {
+            throwHandled(
+                'The file was uploaded to one SharePoint folder, but another destination failed: ' +
+                failedFolders[0]
+            );
+        }
+
+        UploadResult result = new UploadResult();
+        result.fileName = fileName;
+        result.driveItemId = uploadedFile.id;
+        result.folderItemId = folderIds[0];
+        result.message = folderIds.size() > 1
+            ? 'Uploaded to SharePoint (Account folder and central contract folder).'
+            : 'Uploaded to SharePoint.';
+        return result;
     }
 
     private static List<String> getTargetFolderIds(Id recordId, SharePoint_Config__mdt config) {
-        Id accountId;
+        Id accountId = getAccountId(recordId);
         Id opportunityId;
         Contract contractRecord;
 
-        if (recordId.getSObjectType() == Account.SObjectType) {
-            accountId = recordId;
-        } else if (recordId.getSObjectType() == Opportunity.SObjectType) {
-            Opportunity opportunityRecord = [SELECT AccountId FROM Opportunity WHERE Id = :recordId LIMIT 1];
-            accountId = opportunityRecord.AccountId;
+        if (recordId.getSObjectType() == Opportunity.SObjectType) {
             opportunityId = recordId;
         } else if (recordId.getSObjectType() == Contract.SObjectType) {
             contractRecord = [
@@ -134,9 +195,6 @@ public with sharing class LinkEaseController {
                 FROM Contract WHERE Id = :recordId
                 LIMIT 1
             ];
-            accountId = contractRecord.AccountId;
-        } else {
-            throwHandled('LinkEase supports Account, Opportunity, and Contract records only.');
         }
 
         if (accountId == null) throwHandled('This record is not related to an Account.');
@@ -167,6 +225,35 @@ public with sharing class LinkEaseController {
             );
         } else addFolderId(uniqueFolderIds, accountFolderId);
         return new List<String>(uniqueFolderIds);
+    }
+
+    private static Id getAccountId(Id recordId) {
+        if (recordId.getSObjectType() == Account.SObjectType) return recordId;
+        if (recordId.getSObjectType() == Opportunity.SObjectType) {
+            return [SELECT AccountId FROM Opportunity WHERE Id = :recordId LIMIT 1].AccountId;
+        }
+        if (recordId.getSObjectType() == Contract.SObjectType) {
+            return [SELECT AccountId FROM Contract WHERE Id = :recordId LIMIT 1].AccountId;
+        }
+        throwHandled('LinkEase supports Account, Opportunity, and Contract records only.');
+        return null;
+    }
+
+    private static List<SharePointFolder> listChildren(String driveId, String folderId) {
+        List<SharePointFolder> result = new List<SharePointFolder>();
+        for (SharePointGraphClient.DriveItem item : SharePointGraphClient.listFolderContents(driveId, folderId)) {
+            SharePointFolder node = new SharePointFolder();
+            node.id = item.id;
+            node.name = item.name;
+            node.isFolder = item.isFolder == true;
+            node.size = item.size;
+            node.lastModifiedDateTime = item.lastModifiedDateTime;
+            node.lastModifiedBy = item.lastModifiedBy;
+            node.webUrl = item.webUrl;
+            node.children = new List<SharePointFolder>();
+            result.add(node);
+        }
+        return result;
     }
 
     private static void addFolderId(Set<String> folderIds, String folderId) {
@@ -222,9 +309,23 @@ public with sharing class LinkEaseController {
     }
 
     private static SharePoint_Config__mdt getConfig() {
-        return Test.isRunningTest() && configOverride != null
-            ? configOverride
-            : SharePoint_Config__mdt.getInstance('Default');
+        if (Test.isRunningTest() && configOverride != null) return configOverride;
+        List<SharePoint_Config__mdt> configs = [
+            SELECT Drive_Id__c, Accounts_Parent_Item_Id__c,
+                   CDA_Folder_Item_Id__c, CDA_Item_ID__c,
+                   LOI_Folder_Item_Id__c, LOI_Item_ID__c,
+                   MSA_Folder_Item_Id__c, MSA_Item_ID__c,
+                   CSA_Folder_Item_Id__c, CSA_Item_ID__c,
+                   QAA_Folder_Item_Id__c, QAA_Item_ID__c,
+                   Executive_Review_Folder_Item_Id__c, Executive_Review_Item_ID__c,
+                   Client_Review_Folder_Item_Id__c, Client_Review_Item_ID__c,
+                   Internal_Review_Folder_Item_Id__c, Internal_Review_Item_ID__c,
+                   Misc_Folder_Item_Id__c, Misc_Item_ID__c
+            FROM SharePoint_Config__mdt
+            WHERE DeveloperName = 'Default'
+            LIMIT 1
+        ];
+        return configs.isEmpty() ? null : configs[0];
     }
 
     private static void throwHandled(String message) {

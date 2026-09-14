@@ -112,49 +112,64 @@ public with sharing class SharePointFolderService {
         if (config == null) return null;
 
         String folderName = resolveContractFolderName(contractType, contractStatus);
+        String configuredId;
         if (folderName == 'CDA') {
-            return String.isNotBlank(config.CDA_Folder_Item_Id__c)
-                ? config.CDA_Folder_Item_Id__c
-                : config.CDA_Item_ID__c;
+            configuredId = firstNonBlank(config.CDA_Folder_Item_Id__c, config.CDA_Item_ID__c);
+        } else if (folderName == 'LOI') {
+            configuredId = firstNonBlank(config.LOI_Folder_Item_Id__c, config.LOI_Item_ID__c);
+        } else if (folderName == 'MSA') {
+            configuredId = firstNonBlank(config.MSA_Folder_Item_Id__c, config.MSA_Item_ID__c);
+        } else if (folderName == 'CSA') {
+            configuredId = firstNonBlank(config.CSA_Folder_Item_Id__c, config.CSA_Item_ID__c);
+        } else if (folderName == 'QAA') {
+            configuredId = firstNonBlank(config.QAA_Folder_Item_Id__c, config.QAA_Item_ID__c);
+        } else if (folderName == 'Executive Review') {
+            configuredId = firstNonBlank(
+                config.Executive_Review_Folder_Item_Id__c, config.Executive_Review_Item_ID__c
+            );
+        } else if (folderName == 'Client Review') {
+            configuredId = firstNonBlank(
+                config.Client_Review_Folder_Item_Id__c, config.Client_Review_Item_ID__c
+            );
+        } else if (folderName == 'Internal Review') {
+            configuredId = firstNonBlank(
+                config.Internal_Review_Folder_Item_Id__c, config.Internal_Review_Item_ID__c
+            );
+        } else {
+            configuredId = firstNonBlank(config.Misc_Folder_Item_Id__c, config.Misc_Item_ID__c);
         }
-        if (folderName == 'LOI') {
-            return String.isNotBlank(config.LOI_Folder_Item_Id__c)
-                ? config.LOI_Folder_Item_Id__c
-                : config.LOI_Item_ID__c;
+        return String.isNotBlank(configuredId)
+            ? configuredId
+            : lookupCentralFolderByName(config, folderName);
+    }
+
+    private static String firstNonBlank(String preferredValue, String fallbackValue) {
+        return String.isNotBlank(preferredValue) ? preferredValue : fallbackValue;
+    }
+
+    /**
+     * Org config stores central IDs on *Item_ID__c. If those are blank, resolve
+     * CRM / Legal Contracts / {CDA|LOI|...} by folder name through Graph.
+     */
+    private static String lookupCentralFolderByName(SharePoint_Config__mdt config, String folderName) {
+        if (config == null || String.isBlank(config.Drive_Id__c) || String.isBlank(folderName)) {
+            return null;
         }
-        if (folderName == 'MSA') {
-            return String.isNotBlank(config.MSA_Folder_Item_Id__c)
-                ? config.MSA_Folder_Item_Id__c
-                : config.MSA_Item_ID__c;
+        String crmRootId;
+        try {
+            crmRootId = (String) config.get('CRM_Root_Item_ID__c');
+        } catch (SObjectException ignored) {
+            crmRootId = null;
         }
-        if (folderName == 'CSA') {
-            return String.isNotBlank(config.CSA_Folder_Item_Id__c)
-                ? config.CSA_Folder_Item_Id__c
-                : config.CSA_Item_ID__c;
-        }
-        if (folderName == 'QAA') {
-            return String.isNotBlank(config.QAA_Folder_Item_Id__c)
-                ? config.QAA_Folder_Item_Id__c
-                : config.QAA_Item_ID__c;
-        }
-        if (folderName == 'Executive Review') {
-            return String.isNotBlank(config.Executive_Review_Folder_Item_Id__c)
-                ? config.Executive_Review_Folder_Item_Id__c
-                : config.Executive_Review_Item_ID__c;
-        }
-        if (folderName == 'Client Review') {
-            return String.isNotBlank(config.Client_Review_Folder_Item_Id__c)
-                ? config.Client_Review_Folder_Item_Id__c
-                : config.Client_Review_Item_ID__c;
-        }
-        if (folderName == 'Internal Review') {
-            return String.isNotBlank(config.Internal_Review_Folder_Item_Id__c)
-                ? config.Internal_Review_Folder_Item_Id__c
-                : config.Internal_Review_Item_ID__c;
-        }
-        return String.isNotBlank(config.Misc_Folder_Item_Id__c)
-            ? config.Misc_Folder_Item_Id__c
-            : config.Misc_Item_ID__c;
+        if (String.isBlank(crmRootId)) return null;
+
+        String legalContractsId = SharePointGraphClient.getFolderIdByName(
+            config.Drive_Id__c, crmRootId, 'Legal Contracts'
+        );
+        if (String.isBlank(legalContractsId)) return null;
+        return SharePointGraphClient.getFolderIdByName(
+            config.Drive_Id__c, legalContractsId, folderName
+        );
     }
 
     public static String getOrCreateFolderId(

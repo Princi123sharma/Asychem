@@ -15,7 +15,12 @@ private class SharePointGraphClientTest {
             );
             HttpResponse response = new HttpResponse();
             response.setStatusCode(201);
-            response.setBody('{"id":"uploaded-file-id","name":"test file.pdf"}');
+            response.setBody(
+                '{"id":"uploaded-file-id","name":"test file.pdf","size":14,' +
+                '"lastModifiedDateTime":"2026-09-14T00:00:00Z","webUrl":"https://example.test/file",' +
+                '"file":{"mimeType":"application/pdf"},' +
+                '"lastModifiedBy":{"application":{"displayName":"SharePoint App"}}}'
+            );
             return response;
         }
     }
@@ -25,7 +30,7 @@ private class SharePointGraphClientTest {
         Test.setMock(HttpCalloutMock.class, new UploadSuccessMock());
 
         Test.startTest();
-        SharePointGraphClient.uploadFile(
+        SharePointGraphClient.DriveItem uploaded = SharePointGraphClient.uploadFile(
             'drive-id',
             'folder-id',
             'test file.pdf',
@@ -33,6 +38,10 @@ private class SharePointGraphClientTest {
         );
         Test.stopTest();
 
+        System.assertEquals('uploaded-file-id', uploaded.id);
+        System.assertEquals('test file.pdf', uploaded.name);
+        System.assertEquals('SharePoint App', uploaded.lastModifiedBy);
+        System.assertEquals(false, uploaded.isFolder);
     }
 
     @IsTest

@@ -10,7 +10,9 @@ public with sharing class SharePointGraphClient {
         public String name { get; set; }
         public Long size { get; set; }
         public String lastModifiedDateTime { get; set; }
+        public String lastModifiedBy { get; set; }
         public String webUrl { get; set; }
+        public Boolean isFolder { get; set; }
     }
 
     public class DeltaItem {
@@ -64,7 +66,7 @@ public with sharing class SharePointGraphClient {
             );
         }
 
-        return (DriveItem) JSON.deserialize(response.getBody(), DriveItem.class);
+        return parseDriveItem(response.getBody());
     }
 
     public static String getFolderIdByName(
@@ -113,6 +115,16 @@ public with sharing class SharePointGraphClient {
 
     /** Returns the files directly inside an existing SharePoint folder. */
     public static List<DriveItem> listFiles(String driveId, String folderItemId) {
+        List<DriveItem> children = listFolderContents(driveId, folderItemId);
+        List<DriveItem> files = new List<DriveItem>();
+        for (DriveItem child : children) {
+            if (child.isFolder != true) files.add(child);
+        }
+        return files;
+    }
+
+    /** Returns both folders and files directly inside a SharePoint folder. */
+    public static List<DriveItem> listFolderContents(String driveId, String folderItemId) {
         if (String.isBlank(driveId) || String.isBlank(folderItemId)) {
             throw new SharePointException('Drive ID and folder item ID are required.');
         }
@@ -122,7 +134,7 @@ public with sharing class SharePointGraphClient {
             NAMED_CREDENTIAL +
             '/v1.0/drives/' + EncodingUtil.urlEncode(driveId, 'UTF-8') +
             '/items/' + EncodingUtil.urlEncode(folderItemId, 'UTF-8') +
-            '/children?$select=id,name,size,lastModifiedDateTime,webUrl,file&$orderby=name'
+            '/children?$select=id,name,size,lastModifiedDateTime,lastModifiedBy,webUrl,file,folder&$orderby=name'
         );
         request.setMethod('GET');
         request.setHeader('Accept', 'application/json');
@@ -138,15 +150,12 @@ public with sharing class SharePointGraphClient {
 
         Map<String, Object> responseMap = (Map<String, Object>) JSON.deserializeUntyped(response.getBody());
         List<Object> values = (List<Object>) responseMap.get('value');
-        List<DriveItem> files = new List<DriveItem>();
-        if (values == null) return files;
+        List<DriveItem> children = new List<DriveItem>();
+        if (values == null) return children;
         for (Object value : values) {
-            Map<String, Object> item = (Map<String, Object>) value;
-            // Folders are also children; LinkEase displays files only.
-            if (item.get('file') == null) continue;
-            files.add((DriveItem) JSON.deserialize(JSON.serialize(item), DriveItem.class));
+            children.add(parseDriveItem((Map<String, Object>) value));
         }
-        return files;
+        return children;
     }
 
     public static DeltaResult getDelta(String driveId, String deltaLink) {
@@ -246,6 +255,57 @@ public with sharing class SharePointGraphClient {
             );
         }
 
-        return (DriveItem) JSON.deserialize(response.getBody(), DriveItem.class);
+        return parseDriveItem(response.getBody());
+    }
+
+    /**
+     * Graph DriveItem JSON includes nested objects (file, folder, lastModifiedBy).
+     * Apex JSON.deserialize into DriveItem would throw "Illegal value for primitive"
+     * because lastModifiedBy is a String on our class.
+     */
+    private static DriveItem parseDriveItem(String jsonBody) {
+        return parseDriveItem((Map<String, Object>) JSON.deserializeUntyped(jsonBody));
+    }
+
+    private static DriveItem parseDriveItem(Map<String, Object> item) {
+        DriveItem child = new DriveItem();
+        child.id = stringValue(item.get('id'));
+        child.name = stringValue(item.get('name'));
+        child.size = longValue(item.get('size'));
+        child.lastModifiedDateTime = stringValue(item.get('lastModifiedDateTime'));
+        child.webUrl = stringValue(item.get('webUrl'));
+        child.isFolder = item.get('folder') != null;
+        child.lastModifiedBy = displayNameFrom(item.get('lastModifiedBy'));
+        return child;
+    }
+
+    private static String stringValue(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private static Long longValue(Object value) {
+        if (value == null) return null;
+        if (value instanceof Long) return (Long) value;
+        if (value instanceof Integer) return Long.valueOf(String.valueOf(value));
+        if (value instanceof Decimal) return ((Decimal) value).longValue();
+        try {
+            return Long.valueOf(String.valueOf(value));
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private static String displayNameFrom(Object lastModifiedBy) {
+        if (!(lastModifiedBy instanceof Map<String, Object>)) return null;
+        Map<String, Object> modifiedBy = (Map<String, Object>) lastModifiedBy;
+        String userName = nestedDisplayName(modifiedBy.get('user'));
+        if (String.isNotBlank(userName)) return userName;
+        return nestedDisplayName(modifiedBy.get('application'));
+    }
+
+    private static String nestedDisplayName(Object identity) {
+        if (!(identity instanceof Map<String, Object>)) return null;
+        Object displayName = ((Map<String, Object>) identity).get('displayName');
+        return displayName == null ? null : String.valueOf(displayName);
     }
 }
