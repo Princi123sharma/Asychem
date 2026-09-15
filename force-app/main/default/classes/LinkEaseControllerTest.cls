@@ -132,7 +132,7 @@ private class LinkEaseControllerTest {
         LinkEaseController.UploadResult result = LinkEaseController.uploadFile(
             accountRecord.Id,
             'linkease.txt',
-            EncodingUtil.base64Encode(Blob.valueOf('direct to SharePoint'))
+            EncodingUtil.base64Encode(Blob.valueOf('direct to SharePoint')), null
         );
         Test.stopTest();
 
@@ -160,7 +160,7 @@ private class LinkEaseControllerTest {
         LinkEaseController.UploadResult result = LinkEaseController.uploadFile(
             accountRecord.Id,
             'resolved.txt',
-            EncodingUtil.base64Encode(Blob.valueOf('correct destination'))
+            EncodingUtil.base64Encode(Blob.valueOf('correct destination')), null
         );
         Test.stopTest();
 
@@ -195,7 +195,7 @@ private class LinkEaseControllerTest {
 
         Test.startTest();
         LinkEaseController.UploadResult result = LinkEaseController.uploadFile(
-            contractRecord.Id, 'contract.txt', 'Y29udHJhY3Q='
+            contractRecord.Id, 'contract.txt', 'Y29udHJhY3Q=', null
         );
         Test.stopTest();
 
@@ -210,7 +210,7 @@ private class LinkEaseControllerTest {
     static void rejectsRestrictedFileTypes() {
         try {
             LinkEaseController.uploadFile(
-                '001000000000000AAA', 'unsafe.exe', EncodingUtil.base64Encode(Blob.valueOf('file'))
+                '001000000000000AAA', 'unsafe.exe', EncodingUtil.base64Encode(Blob.valueOf('file')), null
             );
             System.assert(false, 'Expected a restricted-file exception.');
         } catch (AuraHandledException exceptionRecord) {
@@ -322,7 +322,7 @@ private class LinkEaseControllerTest {
 
     private static void assertHandled(Id recordId, String fileName, String base64Data, String expectedMessage) {
         try {
-            LinkEaseController.uploadFile(recordId, fileName, base64Data);
+            LinkEaseController.uploadFile(recordId, fileName, base64Data, null);
             System.assert(false, 'Expected an AuraHandledException.');
         } catch (AuraHandledException exceptionRecord) {
             System.assert(exceptionRecord.getMessage().contains(expectedMessage));

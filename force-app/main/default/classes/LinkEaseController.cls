@@ -6,7 +6,7 @@
  * Microsoft Graph and therefore do not appear in Salesforce Files.
  */
 public with sharing class LinkEaseController {
-    private static final Integer MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024;
+    private static final Integer MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
     private static final Set<String> RESTRICTED_FILE_EXTENSIONS = new Set<String>{
         'exe', 'bat', 'cmd', 'scr'
     };
@@ -77,6 +77,7 @@ public with sharing class LinkEaseController {
             ? sanitizeFolderName(accountDisplayName + ' ' + String.valueOf(Date.today().year()))
             : null;
         folder.isFolder = true;
+        folder.webUrl = SharePointGraphClient.getItemWebUrl(config.Drive_Id__c, folder.id);
         folder.children = listChildren(config.Drive_Id__c, folder.id);
         return folder;
     }
@@ -113,7 +114,7 @@ public with sharing class LinkEaseController {
      * selected file so Apex heap limits remain predictable.
      */
     @AuraEnabled
-    public static UploadResult uploadFile(Id recordId, String fileName, String base64Data) {
+    public static UploadResult uploadFile(Id recordId, String fileName, String base64Data, String folderItemId) {
         if (recordId == null) throwHandled('A record ID is required.');
         if (String.isBlank(fileName) || String.isBlank(base64Data)) {
             throwHandled('Select a file to upload.');
@@ -128,7 +129,7 @@ public with sharing class LinkEaseController {
         }
         if (fileData == null || fileData.size() == 0) throwHandled('Empty files cannot be uploaded.');
         if (fileData.size() > MAX_FILE_SIZE_BYTES) {
-            throwHandled('Each file must be 2 MB or smaller.');
+            throwHandled('Each file must be 50 MB or smaller.');
         }
 
         String extension = fileName.contains('.') ? fileName.substringAfterLast('.').toLowerCase() : '';
@@ -141,7 +142,7 @@ public with sharing class LinkEaseController {
             throwHandled('SharePoint is not configured. Contact your administrator.');
         }
 
-        List<String> folderIds = getTargetFolderIds(recordId, config);
+        List<String> folderIds = getUploadFolderIds(recordId, config, folderItemId);
         if (folderIds.isEmpty()) {
             throwHandled('No SharePoint folder is available for this record.');
         }
@@ -180,6 +181,27 @@ public with sharing class LinkEaseController {
             ? 'Uploaded to SharePoint (Account folder and central contract folder).'
             : 'Uploaded to SharePoint.';
         return result;
+    }
+
+    @AuraEnabled
+    public static String createUploadSession(Id recordId, String fileName, String folderItemId) {
+        if (recordId == null || String.isBlank(fileName)) throwHandled('A record and file name are required.');
+        SharePoint_Config__mdt config = getConfig();
+        List<String> folderIds = getUploadFolderIds(recordId, config, folderItemId);
+        if (folderIds.isEmpty()) throwHandled('No SharePoint folder is available for this record.');
+        return SharePointGraphClient.createUploadSession(config.Drive_Id__c, folderIds[0], fileName);
+    }
+
+    @AuraEnabled
+    public static String uploadChunk(String uploadUrl, String base64Data, Long start, Long total) {
+        if (String.isBlank(uploadUrl) || String.isBlank(base64Data) || start == null || total == null) {
+            throwHandled('Upload chunk data is incomplete.');
+        }
+        Blob chunk;
+        try { chunk = EncodingUtil.base64Decode(base64Data); }
+        catch (Exception e) { throwHandled('The upload chunk could not be read.'); return null; }
+        if (chunk.size() > 4 * 320 * 1024) throwHandled('Upload chunks must be 1.25 MB or smaller.');
+        return SharePointGraphClient.uploadChunk(uploadUrl, chunk, start, total);
     }
 
     private static List<String> getTargetFolderIds(Id recordId, SharePoint_Config__mdt config) {
@@ -225,6 +247,22 @@ public with sharing class LinkEaseController {
             );
         } else addFolderId(uniqueFolderIds, accountFolderId);
         return new List<String>(uniqueFolderIds);
+    }
+
+    /**
+     * When LinkEase is opened from an Account record, users can browse into its
+     * Contracts or Opportunities folders. Respect that active folder for the
+     * upload rather than routing the file back to the Account root folder.
+     */
+    private static List<String> getUploadFolderIds(
+        Id recordId,
+        SharePoint_Config__mdt config,
+        String folderItemId
+    ) {
+        if (String.isNotBlank(folderItemId)) {
+            return new List<String>{ folderItemId };
+        }
+        return getTargetFolderIds(recordId, config);
     }
 
     private static Id getAccountId(Id recordId) {

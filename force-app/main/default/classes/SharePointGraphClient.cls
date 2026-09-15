@@ -28,6 +28,53 @@ public with sharing class SharePointGraphClient {
 
     public class SharePointException extends Exception {}
 
+    public static String createUploadSession(String driveId, String folderItemId, String fileName) {
+        HttpRequest request = new HttpRequest();
+        request.setEndpoint(NAMED_CREDENTIAL + '/v1.0/drives/' + EncodingUtil.urlEncode(driveId, 'UTF-8')
+            + '/items/' + EncodingUtil.urlEncode(folderItemId, 'UTF-8') + ':/'
+            + EncodingUtil.urlEncode(fileName, 'UTF-8').replace('+', '%20') + ':/createUploadSession');
+        request.setMethod('POST');
+        request.setHeader('Content-Type', 'application/json');
+        request.setTimeout(TIMEOUT_MS);
+        request.setBody('{"item":{"@microsoft.graph.conflictBehavior":"replace"}}');
+        HttpResponse response = new Http().send(request);
+        if (response.getStatusCode() < 200 || response.getStatusCode() >= 300) {
+            throw new SharePointException('Could not create SharePoint upload session. HTTP '
+                + response.getStatusCode() + ': ' + response.getBody());
+        }
+        Map<String, Object> body = (Map<String, Object>) JSON.deserializeUntyped(response.getBody());
+        return (String) body.get('uploadUrl');
+    }
+
+    public static String getItemWebUrl(String driveId, String itemId) {
+        HttpRequest request = new HttpRequest();
+        request.setEndpoint(NAMED_CREDENTIAL + '/v1.0/drives/' + EncodingUtil.urlEncode(driveId, 'UTF-8')
+            + '/items/' + EncodingUtil.urlEncode(itemId, 'UTF-8') + '?$select=webUrl');
+        request.setMethod('GET');
+        request.setHeader('Accept', 'application/json');
+        request.setTimeout(TIMEOUT_MS);
+        HttpResponse response = new Http().send(request);
+        if (response.getStatusCode() != 200) return null;
+        Map<String, Object> body = (Map<String, Object>) JSON.deserializeUntyped(response.getBody());
+        return (String) body.get('webUrl');
+    }
+
+    public static String uploadChunk(String uploadUrl, Blob chunk, Long start, Long total) {
+        HttpRequest request = new HttpRequest();
+        request.setEndpoint(uploadUrl);
+        request.setMethod('PUT');
+        request.setHeader('Content-Length', String.valueOf(chunk.size()));
+        request.setHeader('Content-Range', 'bytes ' + start + '-' + (start + chunk.size() - 1) + '/' + total);
+        request.setTimeout(TIMEOUT_MS);
+        request.setBodyAsBlob(chunk);
+        HttpResponse response = new Http().send(request);
+        if (response.getStatusCode() < 200 || response.getStatusCode() >= 300) {
+            throw new SharePointException('Could not upload SharePoint file chunk. HTTP '
+                + response.getStatusCode() + ': ' + response.getBody());
+        }
+        return response.getBody();
+    }
+
     public static DriveItem createFolder(
         String driveId,
         String parentItemId,

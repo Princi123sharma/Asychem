@@ -1,13 +1,135 @@
 :host {
     display: block;
+    color: #181818;
+}
+
+.link-ease-shell {
+    max-width: 100%;
+    padding: 0.25rem;
+}
+
+.files-card {
+    display: block;
+    --slds-c-card-radius-border: 0.5rem;
+    --slds-c-card-shadow: 0 0.125rem 0.375rem rgba(24, 24, 24, 0.12);
 }
 
 .link-ease-panel {
     background: #ffffff;
 }
 
-.upload-panel {
+.sharepoint-action {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid #b0b7c3;
+    border-radius: 0.35rem;
     overflow: hidden;
+    background: #ffffff;
+}
+
+.sharepoint-icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border: 0;
+    border-right: 1px solid #d8dde6;
+    background: #ffffff;
+    cursor: pointer;
+}
+
+.sharepoint-icon-button:hover { background: #f3f6f9; }
+
+.sharepoint-icon-button:focus-visible,
+.breadcrumb-link:focus-visible,
+.modal-close:focus-visible,
+.name-link:focus-visible {
+    outline: 2px solid #0176d3;
+    outline-offset: 2px;
+}
+
+.sharepoint-logo {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.35rem;
+    height: 1.35rem;
+    border-radius: 0.15rem;
+    background: #087f83;
+    color: #ffffff;
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.sharepoint-action-label {
+    padding: 0 0.75rem;
+    color: #0b5cab;
+    font-size: 0.8rem;
+}
+
+.upload-modal-backdrop {
+    position: fixed;
+    z-index: 9000;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.45);
+}
+
+.upload-modal {
+    position: relative;
+    width: min(42rem, calc(100vw - 2rem));
+    border-radius: 0.25rem;
+    background: #ffffff;
+    box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.25);
+}
+
+.modal-header {
+    padding: 1rem;
+    border-bottom: 1px solid #d8dde6;
+    color: #181818;
+    font-size: 1.2rem;
+    text-align: center;
+}
+
+.modal-close {
+    position: absolute;
+    top: 0.55rem;
+    right: 0.65rem;
+    border: 0;
+    background: transparent;
+    color: #5c6b7a;
+    font-size: 1.6rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.modal-body { padding: 2rem 2.25rem 1.25rem; }
+
+.modal-drop-zone {
+    position: relative;
+    min-height: 7rem;
+    padding: 1.2rem;
+    border: 1px dashed #7a7a7a;
+    text-align: center;
+}
+
+.modal-drop-zone lightning-input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.modal-select-label { color: #0b5cab; font-size: 0.9rem; }
+.modal-drop-zone p { margin: 0.8rem 0 0; color: #181818; font-size: 0.85rem; }
+.modal-selected-files { margin-top: 1rem; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 1rem; background: #f3f3f3; }
+
+.upload-panel {
+    overflow: visible;
     border: 1px solid #d8dde6;
     border-radius: 0.25rem;
     background: #ffffff;
@@ -17,9 +139,10 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    min-height: 2.75rem;
-    padding: 0.35rem 0.65rem 0.35rem 0.8rem;
-    border-bottom: 1px solid #e5e7eb;
+    min-height: 2.9rem;
+    padding: 0.35rem 0.85rem;
+    border-bottom: 1px solid #d8dde6;
+    background: linear-gradient(90deg, #ffffff 0%, #f7faff 100%);
     color: #181818;
     font-size: 0.8rem;
     font-weight: 600;
@@ -28,7 +151,8 @@
 .file-heading {
     display: inline-flex;
     align-items: center;
-    gap: 0.45rem;
+    gap: 0.55rem;
+    font-size: 0.875rem;
 }
 
 .file-heading lightning-icon {
@@ -42,6 +166,16 @@
     border-radius: 0.2rem;
     background: #fbfcfd;
     text-align: center;
+}
+
+.hidden-file-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
 }
 
 .drop-zone lightning-input {
@@ -101,8 +235,62 @@
     padding: 0 0.65rem 0.65rem;
 }
 
+.compact-upload-action {
+    padding-top: 0.35rem;
+}
+
+.upload-canvas {
+    min-height: 8rem;
+    margin: 0.75rem 0.85rem 0;
+    border: 1px dashed #6f9fd8;
+    border-radius: 0.4rem;
+    background: linear-gradient(135deg, #f7fbff 0%, #f1f8ff 100%);
+    transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+}
+
+.upload-canvas:hover {
+    border-color: #0176d3;
+    background: #eef7ff;
+    box-shadow: inset 0 0 0 1px rgba(1, 118, 211, 0.08);
+}
+
+.upload-canvas-prompt {
+    display: flex;
+    min-height: 8rem;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.upload-canvas-prompt .size-hint {
+    margin-top: 0.55rem;
+    font-size: 0.75rem;
+}
+
+.upload-destination {
+    max-width: 100%;
+    margin: 0.6rem 0 0;
+    color: #3e3e3c;
+    font-size: 0.75rem;
+    overflow-wrap: anywhere;
+    text-align: center;
+}
+
+.upload-canvas .upload-action {
+    min-height: 4.25rem;
+    align-items: center;
+    justify-content: center;
+    padding: 0.65rem;
+}
+
 .library-section {
-    padding-top: 0.5rem;
+    padding: 1rem 0 0;
+}
+
+.table-wrap {
+    overflow-x: auto;
+    padding: 0 0.85rem 0.85rem;
+    scrollbar-color: #9aa5b1 transparent;
 }
 
 .library-toolbar {
@@ -120,6 +308,11 @@
     min-width: 0;
     color: #323130;
     font-size: 0.8125rem;
+    min-height: 2.6rem;
+    padding: 0 0.7rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.35rem;
+    background: #fafbfc;
 }
 
 .breadcrumb-item {
@@ -145,8 +338,8 @@
 }
 
 .breadcrumb-link:hover {
-    color: #0b5cab;
-    text-decoration: underline;
+    color: #0176d3;
+    text-decoration: none;
 }
 
 .breadcrumb-current {
@@ -156,6 +349,10 @@
 .breadcrumb-sep {
     margin: 0 0.35rem;
     color: #605e5c;
+}
+
+.breadcrumb-sep::before {
+    content: '';
 }
 
 .view-chip {
@@ -174,25 +371,30 @@
     width: 100%;
     border-collapse: collapse;
     color: #323130;
+    min-width: 38rem;
     font-size: 0.8125rem;
+    border: 1px solid #d8dde6;
+    border-radius: 0.35rem;
+    overflow: hidden;
 }
 
 .library-table th {
-    padding: 0.45rem 0.5rem;
-    border-bottom: 1px solid #edebe9;
-    color: #605e5c;
+    padding: 0.55rem 0.55rem;
+    border-bottom: 1px solid #a8a8a8;
+    background: #f3f5f7;
+    color: #181818;
     font-weight: 600;
     text-align: left;
 }
 
 .library-table td {
-    padding: 0.45rem 0.5rem;
-    border-bottom: 1px solid #f3f2f1;
+    padding: 0.48rem 0.55rem;
+    border-bottom: 1px solid #e5e7eb;
     vertical-align: middle;
 }
 
 .library-table tbody tr:hover {
-    background: #faf9f8;
+    background: #f4f9fe;
 }
 
 .name-cell {
@@ -241,6 +443,7 @@
 }
 
 .name-link:hover {
+    color: #014486;
     text-decoration: underline;
 }
 
@@ -250,10 +453,67 @@
 }
 
 .modified-by {
-    display: inline-block;
-    padding: 0.1rem 0.45rem;
-    border-radius: 0.75rem;
-    background: #f3f2f1;
+    display: inline;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
     color: #323130;
     white-space: nowrap;
+}
+
+@media (max-width: 36rem) {
+    .link-ease-shell { padding: 0; }
+    .file-header { align-items: flex-start; gap: 0.65rem; }
+    .sharepoint-action-label { display: none; }
+    .upload-canvas { margin: 0.65rem 0.55rem 0; }
+    .table-wrap { padding: 0 0.55rem 0.65rem; }
+    .breadcrumb { padding: 0 0.55rem; }
+}
+
+/* Flexible file-table sizing and readable long values. */
+.library-table {
+    table-layout: fixed;
+}
+
+.library-table th:nth-child(1) { width: 48%; }
+.library-table th:nth-child(2) { width: 26%; }
+.library-table th:nth-child(3) { width: 26%; }
+
+.library-table th {
+    position: relative;
+}
+
+.library-table td,
+.name-link,
+.name-text,
+.meta-cell,
+.modified-by {
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+.name-link,
+.name-text {
+    text-overflow: clip;
+}
+
+.column-resizer {
+    position: absolute;
+    z-index: 1;
+    top: 0;
+    right: -0.35rem;
+    width: 0.7rem;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    border-right: 2px solid transparent;
+    background: transparent;
+    cursor: col-resize;
+}
+
+.column-resizer:hover,
+.column-resizer:focus-visible {
+    border-right-color: #0176d3;
+    outline: none;
 }
