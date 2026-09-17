@@ -1,14 +1,19 @@
 import { LightningElement, api } from 'lwc';
 import { ShowToastEvent } from 'lightning/platformShowToastEvent';
+import { notifyRecordUpdateAvailable } from 'lightning/uiRecordApi';
 import uploadFile from '@salesforce/apex/LinkEaseController.uploadFile';
 import createUploadSession from '@salesforce/apex/LinkEaseController.createUploadSession';
 import uploadChunk from '@salesforce/apex/LinkEaseController.uploadChunk';
 import getFolderTree from '@salesforce/apex/LinkEaseController.getFolderTree';
 import getFolderContents from '@salesforce/apex/LinkEaseController.getFolderContents';
+import requestFolderReconciliation from '@salesforce/apex/LinkEaseController.requestFolderReconciliation';
+import getFileDownloadUrl from '@salesforce/apex/LinkEaseController.getFileDownloadUrl';
 
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
 // Microsoft Graph requires non-final chunks to be a multiple of 320 KiB.
 const UPLOAD_CHUNK_SIZE = 4 * 320 * 1024;
+const FOLDER_RETRY_DELAY_MS = 2500;
+const MAX_FOLDER_RETRIES = 12;
 const LIBRARY_ROOT = [
     { id: 'library-documents', name: 'Documents', isPrefix: true },
     { id: 'library-crm', name: 'CRM', isPrefix: true },
@@ -27,6 +32,14 @@ export default class LinkEase extends LightningElement {
     isLoadingFiles = false;
     columnWidths = [];
     resizeState;
+    isPreparingFolders = false;
+    folderPreparationAttempts = 0;
+    folderPreparationTimer;
+    hasRequestedFolderReconciliation = false;
+    selectedItemId;
+    selectedItemName;
+    selectedItemWebUrl;
+    selectedItemIsFolder = false;
 
     get hasFiles() {
         return this.files.length > 0;
@@ -38,6 +51,14 @@ export default class LinkEase extends LightningElement {
 
     get currentFolderLabel() {
         return this.currentFolder?.name || 'the current folder';
+    }
+
+    get downloadDisabled() {
+        return !this.selectedItemId || this.selectedItemIsFolder;
+    }
+
+    get folderPreparationMessage() {
+        return 'Preparing your SharePoint folders. This page will update automatically.';
     }
 
     get breadcrumbs() {
@@ -60,7 +81,10 @@ export default class LinkEase extends LightningElement {
             })
             .map((item) => ({
                 ...item,
-                modifiedLabel: this.formatModified(item.lastModifiedDateTime)
+                modifiedLabel: this.formatModified(item.lastModifiedDateTime),
+                fileType: this.getFileType(item),
+                isSelected: item.id === this.selectedItemId,
+                rowClass: item.id === this.selectedItemId ? 'is-selected' : ''
             }));
     }
 
@@ -73,7 +97,7 @@ export default class LinkEase extends LightningElement {
     }
 
     get columnStyles() {
-        return [0, 1, 2].map((index) => ({
+        return [0, 1, 2, 3].map((index) => ({
             index,
             style: this.columnWidths[index] ? `width: ${this.columnWidths[index]}px;` : ''
         }));
@@ -83,12 +107,22 @@ export default class LinkEase extends LightningElement {
         return this.columnWidths.length ? `width: ${this.columnWidths.reduce((total, width) => total + width, 0)}px;` : '';
     }
 
+    getFileType(item) {
+        if (item.isFolder) return 'Folder';
+        const name = item.name || '';
+        const extensionIndex = name.lastIndexOf('.');
+        return extensionIndex > 0 && extensionIndex < name.length - 1
+            ? name.slice(extensionIndex + 1).toUpperCase()
+            : 'File';
+    }
+
     connectedCallback() {
         this.loadRootFolder();
     }
 
     disconnectedCallback() {
         this.stopColumnResize();
+        this.clearFolderPreparationRetry();
     }
 
     handleResizeStart(event) {
@@ -143,6 +177,101 @@ export default class LinkEase extends LightningElement {
             this.showToast('SharePoint link unavailable',
                 'The current folder does not have a SharePoint link.', 'warning');
         }
+    }
+
+    handleRowSelect(event) {
+        this.selectItem(event.currentTarget.dataset);
+    }
+
+    handleSelectionChange(event) {
+        event.stopPropagation();
+        if (event.target.checked) {
+            this.selectItem(event.currentTarget.dataset);
+        } else {
+            this.clearSelectedItem();
+        }
+    }
+
+    stopRowSelection(event) {
+        event.stopPropagation();
+    }
+
+    selectItem(dataset) {
+        const { id, name, url, folder } = dataset;
+        this.selectedItemId = id;
+        this.selectedItemName = name;
+        this.selectedItemWebUrl = url;
+        this.selectedItemIsFolder = folder === 'true';
+    }
+
+    clearSelectedItem() {
+        this.selectedItemId = undefined;
+        this.selectedItemName = undefined;
+        this.selectedItemWebUrl = undefined;
+        this.selectedItemIsFolder = false;
+    }
+
+    async copyLink() {
+        const link = this.selectedItemWebUrl || this.currentFolder?.webUrl;
+        if (!link) {
+            this.showToast('Link unavailable', 'Select a file or load a SharePoint folder first.', 'warning');
+            return;
+        }
+        try {
+            await this.copyTextToClipboard(link);
+            this.showToast('Link copied', 'The SharePoint link is ready to paste.', 'success');
+        } catch (error) {
+            this.showToast('Unable to copy link', 'Your browser blocked clipboard access. Copy the link from SharePoint instead.', 'error');
+        }
+    }
+
+    async copyTextToClipboard(text) {
+        // Clipboard API access is commonly denied inside a Salesforce Lightning iframe.
+        // Use it first, then fall back to the user-gesture based browser copy command.
+        if (navigator.clipboard && window.isSecureContext) {
+            try {
+                await navigator.clipboard.writeText(text);
+                return;
+            } catch (error) {
+                // Continue to the compatible fallback below.
+            }
+        }
+
+        const copyField = this.template.querySelector('.clipboard-fallback');
+        if (!copyField) throw new Error('Clipboard fallback is unavailable.');
+        copyField.value = text;
+        copyField.focus();
+        copyField.select();
+        const copied = document.execCommand('copy');
+        copyField.value = '';
+        if (!copied) throw new Error('Browser copy command was blocked.');
+    }
+
+    async downloadSelectedFile() {
+        if (this.downloadDisabled) return;
+        try {
+            const downloadUrl = await getFileDownloadUrl({ recordId: this.recordId, itemId: this.selectedItemId });
+            window.open(downloadUrl, '_blank', 'noopener');
+        } catch (error) {
+            const message = error?.body?.message || error?.message || 'Unable to download the selected file.';
+            this.showToast('Download unavailable', message, 'error');
+        }
+    }
+
+    exportCurrentTable() {
+        const escape = (value) => `"${String(value || '').replace(/"/g, '""')}"`;
+        const rows = [
+            ['Name', 'File Type', 'Modified', 'Created By', 'SharePoint Link'],
+            ...this.libraryRows.map((item) => [item.name, item.fileType, item.modifiedLabel, item.lastModifiedBy, item.webUrl])
+        ];
+        const csv = rows.map((row) => row.map(escape).join(',')).join('\r\n');
+        const file = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(file);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = 'LinkEase-Files.csv';
+        anchor.click();
+        URL.revokeObjectURL(url);
     }
 
     handleFileChange(event) {
@@ -212,15 +341,55 @@ export default class LinkEase extends LightningElement {
             this.rootFolder = tree;
             this.currentFolder = tree;
             this.path = [{ id: tree.id, name: tree.name }];
+            this.clearSelectedItem();
+            this.isPreparingFolders = false;
+            this.folderPreparationAttempts = 0;
+            this.hasRequestedFolderReconciliation = false;
+            this.clearFolderPreparationRetry();
+            if (tree.isFallback) {
+                await this.requestFolderReconciliationIfNeeded();
+            }
+            await notifyRecordUpdateAvailable([{ recordId: this.recordId }]);
         } catch (error) {
             this.rootFolder = null;
             this.currentFolder = null;
             this.path = [];
             const message = error?.body?.message || error?.message || 'Unable to load SharePoint files.';
-            this.showToast('Unable to load files', message, 'error');
+            if (message.includes('SharePoint folders are being prepared')) {
+                this.isPreparingFolders = true;
+                await this.requestFolderReconciliationIfNeeded();
+                this.scheduleFolderPreparationRetry();
+            } else {
+                this.showToast('Unable to load files', message, 'error');
+            }
         } finally {
             this.isLoadingFiles = false;
         }
+    }
+
+    async requestFolderReconciliationIfNeeded() {
+        if (this.hasRequestedFolderReconciliation || !this.recordId) return;
+        this.hasRequestedFolderReconciliation = true;
+        try {
+            await requestFolderReconciliation({ recordId: this.recordId });
+        } catch (error) {
+            const message = error?.body?.message || error?.message || 'Unable to request folder preparation.';
+            this.showToast('Folder preparation delayed', message, 'warning');
+        }
+    }
+
+    scheduleFolderPreparationRetry() {
+        if (this.folderPreparationTimer || this.folderPreparationAttempts >= MAX_FOLDER_RETRIES) return;
+        this.folderPreparationAttempts += 1;
+        this.folderPreparationTimer = setTimeout(() => {
+            this.folderPreparationTimer = undefined;
+            this.loadRootFolder();
+        }, FOLDER_RETRY_DELAY_MS);
+    }
+
+    clearFolderPreparationRetry() {
+        if (this.folderPreparationTimer) clearTimeout(this.folderPreparationTimer);
+        this.folderPreparationTimer = undefined;
     }
 
     async handleRefresh() {
@@ -260,6 +429,7 @@ export default class LinkEase extends LightningElement {
             const folder = await getFolderContents({ recordId: this.recordId, folderItemId: folderId });
             folder.name = folder.name || folderName;
             this.currentFolder = folder;
+            this.clearSelectedItem();
             const nextPath = this.path.slice(0, pathIndex);
             nextPath.push({ id: folder.id, name: folder.name });
             this.path = nextPath;

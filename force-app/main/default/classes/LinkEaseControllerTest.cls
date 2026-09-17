@@ -45,22 +45,13 @@ private class LinkEaseControllerTest {
         }
     }
 
-    private class AccountFolderResolutionMock implements HttpCalloutMock {
+    private class AccountFolderIdMock implements HttpCalloutMock {
         public HttpResponse respond(HttpRequest request) {
             HttpResponse response = new HttpResponse();
-            if (request.getMethod() == 'GET') {
-                System.assert(request.getEndpoint().contains('/items/accounts-parent/children'));
-                response.setStatusCode(200);
-                response.setBody(
-                    '{"value":[{"id":"correct-account-folder","name":"Folder Match 2026","folder":{}}]}'
-                );
-                return response;
-            }
-
             System.assertEquals('PUT', request.getMethod());
             System.assert(
-                request.getEndpoint().contains('/items/correct-account-folder:/resolved.txt:/content'),
-                'The upload must use the folder resolved from the configured Accounts parent.'
+                request.getEndpoint().contains('/items/stale-account-folder:/resolved.txt:/content'),
+                'The upload must use the SharePoint folder ID saved on the Account.'
             );
             response.setStatusCode(201);
             response.setBody('{"id":"resolved-file-id","name":"resolved.txt"}');
@@ -142,7 +133,7 @@ private class LinkEaseControllerTest {
     }
 
     @IsTest
-    static void uploadsToResolvedAccountFolderWhenStoredFolderIdIsStale() {
+    static void uploadsToTheFolderSavedOnTheAccount() {
         Account accountRecord = new Account(
             Name = 'Folder Match',
             Nick_Name__c = 'Folder Match',
@@ -154,7 +145,7 @@ private class LinkEaseControllerTest {
             Drive_Id__c = 'drive-id',
             Accounts_Parent_Item_Id__c = 'accounts-parent'
         );
-        Test.setMock(HttpCalloutMock.class, new AccountFolderResolutionMock());
+        Test.setMock(HttpCalloutMock.class, new AccountFolderIdMock());
 
         Test.startTest();
         LinkEaseController.UploadResult result = LinkEaseController.uploadFile(
@@ -164,7 +155,7 @@ private class LinkEaseControllerTest {
         );
         Test.stopTest();
 
-        System.assertEquals('correct-account-folder', result.folderItemId);
+        System.assertEquals('stale-account-folder', result.folderItemId);
         System.assertEquals('resolved-file-id', result.driveItemId);
     }
 

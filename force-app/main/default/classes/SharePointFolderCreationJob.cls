@@ -1,10 +1,6 @@
 public with sharing class SharePointFolderCreationJob
     implements Queueable, Database.AllowsCallouts {
 
-    // Each account needs up to three Graph callouts. Keep each Queueable below
-    // Salesforce's 100-callout transaction limit.
-    private static final Integer ACCOUNTS_PER_JOB = 30;
-
     private Set<Id> accountIds;
 
     public SharePointFolderCreationJob(Set<Id> accountIds) {
@@ -12,23 +8,36 @@ public with sharing class SharePointFolderCreationJob
     }
 
     public void execute(QueueableContext context) {
-        List<Id> pendingAccountIds = new List<Id>(accountIds);
-        Integer accountsToProcess = Math.min(
-            ACCOUNTS_PER_JOB,
-            pendingAccountIds.size()
-        );
+        if (accountIds.isEmpty()) return;
 
-        for (Integer index = 0; index < accountsToProcess; index++) {
-            SharePointFolderService.createAccountFolders(pendingAccountIds[index]);
+        List<Id> pendingAccountIds = new List<Id>(accountIds);
+        Id accountId = pendingAccountIds.remove(0);
+        try {
+            // All Graph calls complete before the Account update. This keeps
+            // the transaction callout-safe while making the complete folder
+            // structure available after a single Queueable job.
+            Account accountUpdate = SharePointFolderService.resolveAccountFolderUpdate(accountId);
+            TriggerControlHelper.isBatchRunning = true;
+            Database.SaveResult saveResult = Database.update(accountUpdate, false);
+            TriggerControlHelper.isBatchRunning = false;
+            if (!saveResult.isSuccess()) {
+                System.debug(
+                    LoggingLevel.ERROR,
+                    'Unable to save SharePoint folder IDs for Account ' + accountId + ': ' +
+                    saveResult.getErrors()[0].getMessage()
+                );
+            }
+        } catch (Exception exceptionRecord) {
+            TriggerControlHelper.isBatchRunning = false;
+            System.debug(
+                LoggingLevel.ERROR,
+                'SharePoint folder creation failed for Account ' + accountId + ': ' +
+                exceptionRecord.getMessage()
+            );
         }
 
-        if (pendingAccountIds.size() > accountsToProcess) {
-            Set<Id> remainingAccountIds = new Set<Id>();
-            for (Integer index = accountsToProcess; index < pendingAccountIds.size(); index++) {
-                remainingAccountIds.add(pendingAccountIds[index]);
-            }
-
-            System.enqueueJob(new SharePointFolderCreationJob(remainingAccountIds));
+        if (!pendingAccountIds.isEmpty()) {
+            System.enqueueJob(new SharePointFolderCreationJob(new Set<Id>(pendingAccountIds)));
         }
     }
 }

@@ -1,7 +1,12 @@
 public with sharing class SharePointFolderService {
     public class SharePointFolderException extends Exception {}
 
-    public static void createAccountFolders(Id accountId) {
+    /**
+     * Resolves or creates the SharePoint folders and returns the Account fields
+     * to save. This method deliberately performs no DML, so callers can safely
+     * complete all Graph callouts before committing Salesforce updates.
+     */
+    public static Account resolveAccountFolderUpdate(Id accountId) {
         if (accountId == null) {
             throw new SharePointFolderException('Account ID is required.');
         }
@@ -58,13 +63,26 @@ public with sharing class SharePointFolderService {
             accountFolderId,
             'Opportunities'
         );
+        if (String.isBlank(contractsFolderId) || String.isBlank(opportunitiesFolderId)) {
+            throw new SharePointFolderException(
+                'Unable to resolve the Contracts and Opportunities SharePoint folders.'
+            );
+        }
 
-        update new Account(
+        return new Account(
             Id = account.Id,
             SharePoint_Folder_Id__c = accountFolderId,
             SharePoint_Contract_Folder_Id__c = contractsFolderId,
             SharePoint_Opportunities_Folder_Id__c = opportunitiesFolderId
         );
+    }
+
+    /**
+     * Retained for callers that explicitly need an immediate save. Queueable
+     * folder processing should use resolveAccountFolderUpdate instead.
+     */
+    public static void createAccountFolders(Id accountId) {
+        update resolveAccountFolderUpdate(accountId);
     }
 
     public static String resolveContractFolderName(String contractType, String contractStatus) {

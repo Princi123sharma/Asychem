@@ -25,6 +25,19 @@ private class SharePointGraphClientTest {
         }
     }
 
+    private class DownloadUrlMock implements HttpCalloutMock {
+        public HttpResponse respond(HttpRequest request) {
+            System.assertEquals('GET', request.getMethod());
+            System.assert(request.getEndpoint().contains('/v1.0/drives/drive-id/items/file-id'));
+            System.assertEquals(-1, request.getEndpoint().indexOf('?$select='),
+                'The item response supplies the preauthenticated download URL without a special projection.');
+            HttpResponse response = new HttpResponse();
+            response.setStatusCode(200);
+            response.setBody('{"id":"file-id","file":{},"@microsoft.graph.downloadUrl":"https://download.example.test/file"}');
+            return response;
+        }
+    }
+
     @IsTest
     static void uploadFileSendsGraphContentRequest() {
         Test.setMock(HttpCalloutMock.class, new UploadSuccessMock());
@@ -42,6 +55,17 @@ private class SharePointGraphClientTest {
         System.assertEquals('test file.pdf', uploaded.name);
         System.assertEquals('SharePoint App', uploaded.lastModifiedBy);
         System.assertEquals(false, uploaded.isFolder);
+    }
+
+    @IsTest
+    static void getsTheDownloadUrlFromTheDriveItemResponse() {
+        Test.setMock(HttpCalloutMock.class, new DownloadUrlMock());
+
+        Test.startTest();
+        String downloadUrl = SharePointGraphClient.getItemDownloadUrl('drive-id', 'file-id');
+        Test.stopTest();
+
+        System.assertEquals('https://download.example.test/file', downloadUrl);
     }
 
     @IsTest

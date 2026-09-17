@@ -115,7 +115,7 @@ public with sharing class SharePointUploadJob
         Map<Id, Account> accountsById = allAccountIds.isEmpty()
             ? new Map<Id, Account>()
             : new Map<Id, Account>([
-                SELECT Id, SharePoint_Folder_Id__c, SharePoint_Contract_Folder_Id__c,
+                SELECT Id, Name, Nick_Name__c, SharePoint_Folder_Id__c, SharePoint_Contract_Folder_Id__c,
                        SharePoint_Opportunities_Folder_Id__c
                 FROM Account WHERE Id IN :allAccountIds
             ]);
@@ -127,7 +127,7 @@ public with sharing class SharePointUploadJob
                 if (entityId.getSObjectType() == Account.SObjectType) {
                     Account accountRecord = accountsById.get(entityId);
                     addFolder(foldersByDocumentAndEntity, mappingKey,
-                        accountRecord == null ? null : accountRecord.SharePoint_Folder_Id__c);
+                        resolveAccountFolderId(config, accountRecord));
                 } else if (entityId.getSObjectType() == Opportunity.SObjectType) {
                     Opportunity opportunityRecord = opportunitiesById.get(entityId);
                     Account accountRecord = opportunityRecord == null ? null : accountsById.get(opportunityRecord.AccountId);
@@ -162,6 +162,30 @@ public with sharing class SharePointUploadJob
             }
         }
         return result;
+    }
+
+    private static String resolveAccountFolderId(SharePoint_Config__mdt config, Account accountRecord) {
+        if (accountRecord == null) return null;
+        if (String.isNotBlank(accountRecord.SharePoint_Folder_Id__c)) {
+            return accountRecord.SharePoint_Folder_Id__c;
+        }
+        if (config == null || String.isBlank(config.Drive_Id__c) ||
+            String.isBlank(config.Accounts_Parent_Item_Id__c)) return null;
+
+        String accountDisplayName = String.isNotBlank(accountRecord.Nick_Name__c)
+            ? accountRecord.Nick_Name__c
+            : accountRecord.Name;
+        String expectedName = accountDisplayName.trim() + ' ' + String.valueOf(Date.today().year());
+        String resolvedFolderId;
+        for (SharePointGraphClient.DriveItem item : SharePointGraphClient.listFolderContents(
+            config.Drive_Id__c, config.Accounts_Parent_Item_Id__c
+        )) {
+            if (item.isFolder && item.name == expectedName) {
+                if (String.isNotBlank(resolvedFolderId)) return null;
+                resolvedFolderId = item.id;
+            }
+        }
+        return resolvedFolderId;
     }
 
     private static void addFolder(Map<String, Set<String>> foldersByDocumentAndEntity, String mappingKey, String folderItemId) {

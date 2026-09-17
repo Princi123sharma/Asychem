@@ -59,6 +59,26 @@ public with sharing class SharePointGraphClient {
         return (String) body.get('webUrl');
     }
 
+    /** Returns Graph's short-lived, preauthenticated download URL for a file. */
+    public static String getItemDownloadUrl(String driveId, String itemId) {
+        if (String.isBlank(driveId) || String.isBlank(itemId)) return null;
+        HttpRequest request = new HttpRequest();
+        request.setEndpoint(
+            NAMED_CREDENTIAL + '/v1.0/drives/' + EncodingUtil.urlEncode(driveId, 'UTF-8') +
+            '/items/' + EncodingUtil.urlEncode(itemId, 'UTF-8')
+        );
+        request.setMethod('GET');
+        request.setHeader('Accept', 'application/json');
+        request.setTimeout(TIMEOUT_MS);
+        HttpResponse response = new Http().send(request);
+        if (response.getStatusCode() != 200) {
+            throw new SharePointException('Could not retrieve the SharePoint file. HTTP ' +
+                response.getStatusCode() + '.');
+        }
+        Map<String, Object> body = (Map<String, Object>) JSON.deserializeUntyped(response.getBody());
+        return stringValue(body.get('@microsoft.graph.downloadUrl'));
+    }
+
     public static String uploadChunk(String uploadUrl, Blob chunk, Long start, Long total) {
         HttpRequest request = new HttpRequest();
         request.setEndpoint(uploadUrl);

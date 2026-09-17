@@ -31,6 +31,7 @@ public with sharing class LinkEaseController {
         @AuraEnabled public String id { get; set; }
         @AuraEnabled public String name { get; set; }
         @AuraEnabled public Boolean isFolder { get; set; }
+        @AuraEnabled public Boolean isFallback { get; set; }
         @AuraEnabled public Long size { get; set; }
         @AuraEnabled public String lastModifiedDateTime { get; set; }
         @AuraEnabled public String lastModifiedBy { get; set; }
@@ -40,7 +41,56 @@ public with sharing class LinkEaseController {
 
     @AuraEnabled
     public static SharePointFolder getFolderTree(Id recordId) {
-        return getFolderContents(recordId, null);
+        String defaultFolderId = getDefaultFolderId(recordId);
+        SharePointFolder folder = getFolderContents(recordId, defaultFolderId);
+        if (String.isBlank(defaultFolderId) && recordId.getSObjectType() != Account.SObjectType) {
+            String childFolderName = recordId.getSObjectType() == Contract.SObjectType
+                ? 'Contracts'
+                : 'Opportunities';
+            for (SharePointFolder child : folder.children) {
+                if (child.isFolder && child.name == childFolderName) {
+                    folder = getFolderContents(recordId, child.id);
+                    defaultFolderId = child.id;
+                    break;
+                }
+            }
+        }
+        if (String.isNotBlank(defaultFolderId) && recordId.getSObjectType() == Contract.SObjectType) {
+            folder.name = 'Contracts';
+        } else if (String.isNotBlank(defaultFolderId) && recordId.getSObjectType() == Opportunity.SObjectType) {
+            folder.name = 'Opportunities';
+        }
+        return folder;
+    }
+
+    /**
+     * Requests a background repair for legacy Accounts whose SharePoint folder
+     * exists but whose folder IDs were never saved in Salesforce. LinkEase
+     * remains read-only; the Queueable performs the reconciliation.
+     */
+    @AuraEnabled
+    public static void requestFolderReconciliation(Id recordId) {
+        if (recordId == null) throwHandled('A record ID is required.');
+        Id accountId = getAccountId(recordId);
+        System.enqueueJob(new SharePointFolderCreationJob(new Set<Id>{ accountId }));
+    }
+
+    @AuraEnabled
+    public static String getFileDownloadUrl(Id recordId, String itemId) {
+        if (recordId == null || String.isBlank(itemId)) {
+            throwHandled('Select a file to download.');
+        }
+        // Confirm this is a supported LinkEase record before making the callout.
+        getAccountId(recordId);
+        SharePoint_Config__mdt config = getConfig();
+        if (config == null || String.isBlank(config.Drive_Id__c)) {
+            throwHandled('SharePoint is not configured. Contact your administrator.');
+        }
+        String downloadUrl = SharePointGraphClient.getItemDownloadUrl(config.Drive_Id__c, itemId);
+        if (String.isBlank(downloadUrl)) {
+            throwHandled('The selected file is unavailable for download.');
+        }
+        return downloadUrl;
     }
 
     @AuraEnabled
@@ -53,18 +103,14 @@ public with sharing class LinkEaseController {
 
         Id accountId = getAccountId(recordId);
         Account accountRecord = getAccountWithFolders(accountId);
-        if (String.isBlank(accountRecord.SharePoint_Folder_Id__c)) {
-            try {
-                SharePointFolderService.createAccountFolders(accountId);
-                accountRecord = getAccountWithFolders(accountId);
-            } catch (Exception exceptionRecord) {
-                throwHandled('Unable to create the Account SharePoint folder: ' + exceptionRecord.getMessage());
-            }
-        }
-
-        String rootFolderId = resolveAccountFolderId(accountRecord, config);
+        String rootFolderId = accountRecord.SharePoint_Folder_Id__c;
+        Boolean usedFallback = false;
         if (String.isBlank(rootFolderId)) {
-            throwHandled('No SharePoint folder is available for this record.');
+            rootFolderId = findExistingAccountFolderId(config, accountRecord);
+            usedFallback = String.isNotBlank(rootFolderId);
+        }
+        if (String.isBlank(rootFolderId)) {
+            throwHandled('SharePoint folders are being prepared for this Account. Refresh in a moment.');
         }
 
         String accountDisplayName = String.isNotBlank(accountRecord.Nick_Name__c)
@@ -73,6 +119,7 @@ public with sharing class LinkEaseController {
         Boolean listingRoot = String.isBlank(folderItemId) || folderItemId == rootFolderId;
         SharePointFolder folder = new SharePointFolder();
         folder.id = listingRoot ? rootFolderId : folderItemId;
+        folder.isFallback = usedFallback;
         folder.name = listingRoot
             ? sanitizeFolderName(accountDisplayName + ' ' + String.valueOf(Date.today().year()))
             : null;
@@ -222,15 +269,10 @@ public with sharing class LinkEaseController {
         if (accountId == null) throwHandled('This record is not related to an Account.');
         Account accountRecord = getAccountWithFolders(accountId);
         if (String.isBlank(accountRecord.SharePoint_Folder_Id__c)) {
-            try {
-                SharePointFolderService.createAccountFolders(accountId);
-                accountRecord = getAccountWithFolders(accountId);
-            } catch (Exception exceptionRecord) {
-                throwHandled('Unable to create the Account SharePoint folder: ' + exceptionRecord.getMessage());
-            }
+            throwHandled('SharePoint folders are being prepared for this Account. Refresh in a moment.');
         }
 
-        String accountFolderId = resolveAccountFolderId(accountRecord, config);
+        String accountFolderId = accountRecord.SharePoint_Folder_Id__c;
         Set<String> uniqueFolderIds = new Set<String>();
         if (opportunityId != null) addFolderId(
             uniqueFolderIds, accountRecord.SharePoint_Opportunities_Folder_Id__c
@@ -247,6 +289,47 @@ public with sharing class LinkEaseController {
             );
         } else addFolderId(uniqueFolderIds, accountFolderId);
         return new List<String>(uniqueFolderIds);
+    }
+
+    /** Selects the default LinkEase folder for the page's record type. */
+    private static String getDefaultFolderId(Id recordId) {
+        if (recordId == null || recordId.getSObjectType() == Account.SObjectType) return null;
+
+        Id accountId = getAccountId(recordId);
+        Account accountRecord = getAccountWithFolders(accountId);
+        if (recordId.getSObjectType() == Contract.SObjectType) {
+            return accountRecord.SharePoint_Contract_Folder_Id__c;
+        }
+        if (recordId.getSObjectType() == Opportunity.SObjectType) {
+            return accountRecord.SharePoint_Opportunities_Folder_Id__c;
+        }
+        return null;
+    }
+
+    /**
+     * Legacy fallback only: find exactly one matching Account folder under the
+     * configured Accounts parent. This never creates folders or writes data.
+     */
+    private static String findExistingAccountFolderId(
+        SharePoint_Config__mdt config,
+        Account accountRecord
+    ) {
+        if (config == null || String.isBlank(config.Drive_Id__c) ||
+            String.isBlank(config.Accounts_Parent_Item_Id__c)) return null;
+
+        String accountDisplayName = String.isNotBlank(accountRecord.Nick_Name__c)
+            ? accountRecord.Nick_Name__c
+            : accountRecord.Name;
+        String expectedName = sanitizeFolderName(
+            accountDisplayName + ' ' + String.valueOf(Date.today().year())
+        );
+        List<SharePointGraphClient.DriveItem> matches = new List<SharePointGraphClient.DriveItem>();
+        for (SharePointGraphClient.DriveItem item : SharePointGraphClient.listFolderContents(
+            config.Drive_Id__c, config.Accounts_Parent_Item_Id__c
+        )) {
+            if (item.isFolder && item.name == expectedName) matches.add(item);
+        }
+        return matches.size() == 1 ? matches[0].id : null;
     }
 
     /**
@@ -296,30 +379,6 @@ public with sharing class LinkEaseController {
 
     private static void addFolderId(Set<String> folderIds, String folderId) {
         if (String.isNotBlank(folderId)) folderIds.add(folderId);
-    }
-
-    /**
-     * For an Account-page upload, prefer the folder currently found below the
-     * configured Accounts parent. This prevents a stale Account field from
-     * routing a file into another Account's SharePoint folder.
-     */
-    private static String resolveAccountFolderId(Account accountRecord, SharePoint_Config__mdt config) {
-        if (String.isBlank(config.Accounts_Parent_Item_Id__c)) {
-            return accountRecord.SharePoint_Folder_Id__c;
-        }
-
-        String accountDisplayName = String.isNotBlank(accountRecord.Nick_Name__c)
-            ? accountRecord.Nick_Name__c
-            : accountRecord.Name;
-        String folderName = sanitizeFolderName(
-            accountDisplayName + ' ' + String.valueOf(Date.today().year())
-        );
-        String resolvedFolderId = SharePointGraphClient.getFolderIdByName(
-            config.Drive_Id__c, config.Accounts_Parent_Item_Id__c, folderName
-        );
-        return String.isNotBlank(resolvedFolderId)
-            ? resolvedFolderId
-            : accountRecord.SharePoint_Folder_Id__c;
     }
 
     private static Account getAccountWithFolders(Id accountId) {
