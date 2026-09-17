@@ -59,7 +59,7 @@ flowchart LR
     end
 
     subgraph Apex[Apex Integration Layer]
-        AF[AccountFolder trigger]
+        AF[SharePointAccountFolder trigger]
         ASH[AccountSharePointTriggerHandler]
         FOLDERJOB[SharePointFolderCreationJob]
         FOLDERSVC[SharePointFolderService]
@@ -117,7 +117,8 @@ flowchart LR
 
 | Component | Type | Current responsibility |
 |---|---|---|
-| `AccountFolder.trigger` | Apex trigger | Starts the legacy Box Account-folder path on Account insert and delegates SharePoint Account processing to `AccountSharePointTriggerHandler`. |
+| `AccountFolder.trigger` | Apex trigger | Starts only the legacy Box Account-folder path on Account insert. |
+| `SharePointAccountFolder.trigger` | Apex trigger | Starts SharePoint Account-folder processing on Account insert or update. |
 | `AccountSharePointTriggerHandler.cls` | Apex class | Detects Accounts whose SharePoint folder fields are missing and enqueues folder work. |
 | `SharePointFolderCreationJob.cls` | Queueable Apex | Performs SharePoint folder callouts and saves returned folder IDs to Account fields. |
 | `SharePointFolderService.cls` | Apex service | Resolves or creates the Account folder and its `Contracts` and `Opportunities` child folders. |

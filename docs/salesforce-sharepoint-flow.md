@@ -10,7 +10,7 @@ For the detailed deployment, validation, and troubleshooting runbook, see [sales
 flowchart LR
     subgraph SF[Salesforce]
         A[Account inserted]
-        AT[AccountFolder trigger]
+        AT[SharePointAccountFolder trigger]
         AC[Account record]
         CDL[ContentDocumentLink inserted]
         FT[SharePointFiles trigger]
@@ -120,7 +120,7 @@ flowchart LR
 
 ## Implementation references
 
-- [AccountFolder.trigger](../force-app/main/default/triggers/AccountFolder.trigger) starts Account folder processing and also invokes the separate legacy Box integration.
+- [SharePointAccountFolder.trigger](../force-app/main/default/triggers/SharePointAccountFolder.trigger) starts SharePoint Account-folder processing.
 - [SharePointFolderCreationJob.cls](../force-app/main/default/classes/SharePointFolderCreationJob.cls) batches and chains Account folder work.
 - [SharePointFolderService.cls](../force-app/main/default/classes/SharePointFolderService.cls) creates folders, stores IDs, and selects central contract destinations.
 - [SharePointFiles.trigger](../force-app/main/default/triggers/SharePointFiles.trigger) starts Salesforce File processing.
@@ -134,4 +134,4 @@ flowchart LR
 
 The current Apex implementation creates the Account child folder with the name `Contracts` in `SharePointFolderService.createAccountFolders`. The runbook and some routing documentation refer to this destination as `Legal Contracts`. Confirm the production SharePoint folder name before presenting the hierarchy as a fixed business standard or completing production sign-off.
 
-The Box integration remains separate from this SharePoint flow. The shared `AccountFolder` trigger can start both integrations when their respective folder IDs are blank.
+The Box integration remains separate from this SharePoint flow. `AccountFolder.trigger` starts Box processing, while `SharePointAccountFolder.trigger` starts SharePoint processing.

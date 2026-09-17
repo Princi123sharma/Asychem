@@ -17,7 +17,7 @@ The repository also contains a separate, older Box integration. Box and SharePoi
 
 ```mermaid
 flowchart TD
-    A[Account inserted] --> B[AccountFolder trigger]
+    A[Account inserted] --> B[SharePointAccountFolder trigger]
     B --> C[SharePointFolderCreationJob]
     C --> D[SharePointFolderService]
     D --> E[SharePointGraphClient]
@@ -35,7 +35,7 @@ flowchart TD
 
 | Component | Responsibility |
 |---|---|
-| [AccountFolder.trigger](../force-app/main/default/triggers/AccountFolder.trigger) | Starts Box and SharePoint account-folder processing after Account insert. |
+| [SharePointAccountFolder.trigger](../force-app/main/default/triggers/SharePointAccountFolder.trigger) | Starts SharePoint account-folder processing after Account insert or update. |
 | [SharePointFolderCreationJob.cls](../force-app/main/default/classes/SharePointFolderCreationJob.cls) | Queueable callout job that processes account folder creation in batches of 30 Accounts. |
 | [SharePointFolderService.cls](../force-app/main/default/classes/SharePointFolderService.cls) | Reads configuration, creates the account folder and two child folders, and saves returned IDs. |
 | [SharePointGraphClient.cls](../force-app/main/default/classes/SharePointGraphClient.cls) | Low-level Microsoft Graph HTTP client for folder lookup, folder creation, and file upload. |

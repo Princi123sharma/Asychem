@@ -38,7 +38,7 @@ flowchart TD
 
 | Component | Responsibility |
 |---|---|
-| [AccountFolder.trigger](../force-app/main/default/triggers/AccountFolder.trigger) | Starts Box account-folder creation and SharePoint account-folder processing after Account insert. |
+| [AccountFolder.trigger](../force-app/main/default/triggers/AccountFolder.trigger) | Starts Box account-folder creation after Account insert. |
 | [BoxFiles.trigger](../force-app/main/default/triggers/BoxFiles.trigger) | Starts Box file processing after a `ContentDocumentLink` insert. |
 | [BoxController.cls](../force-app/main/default/classes/BoxController.cls) | Main Box service. Creates folders, loads Salesforce file context, resolves target folders, validates files, builds upload requests, and uploads files. |
 | [BoxFilesHelper.cls](../force-app/main/default/classes/BoxFilesHelper.cls) | Older/direct file-routing helper. It can be called explicitly and contains routing logic similar to `BoxController`, but the current trigger calls `BoxController.handleFileUpload` directly. |
