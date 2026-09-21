@@ -151,7 +151,9 @@ private class LinkEaseControllerTest {
         LinkEaseController.UploadResult result = LinkEaseController.uploadFile(
             accountRecord.Id,
             'resolved.txt',
-            EncodingUtil.base64Encode(Blob.valueOf('correct destination')), null
+            // A user may be viewing Contracts, but Account-page uploads must
+            // still go to the Account root.
+            EncodingUtil.base64Encode(Blob.valueOf('correct destination')), 'contracts-folder'
         );
         Test.stopTest();
 
@@ -186,7 +188,9 @@ private class LinkEaseControllerTest {
 
         Test.startTest();
         LinkEaseController.UploadResult result = LinkEaseController.uploadFile(
-            contractRecord.Id, 'contract.txt', 'Y29udHJhY3Q=', null
+            // LinkEase passes the currently displayed Account Contracts folder.
+            // A Contract upload must still add the central destination.
+            contractRecord.Id, 'contract.txt', 'Y29udHJhY3Q=', 'account-contract-folder'
         );
         Test.stopTest();
 

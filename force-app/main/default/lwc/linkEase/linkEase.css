@@ -49,6 +49,44 @@
 .sharepoint-action-label { padding: 0 0.65rem; color: var(--le-text-secondary); font-size: var(--le-font-xs); font-weight: 600; }
 .sharepoint-logo { display: inline-flex; align-items: center; justify-content: center; width: 1.25rem; height: 1.25rem; border-radius: 0.15rem; background: var(--le-teal); color: #ffffff; font-size: 0.75rem; font-weight: 700; }
 
+/* Compact document-library layout, matching the LinkEase reference. */
+.link-ease-shell { padding: 0.3rem; background: #f4f5f7; }
+.file-header { min-height: 2.4rem; padding: 0.25rem 0.75rem; }
+.file-heading { gap: 0.4rem; color: #202124; font-size: 1.15rem; }
+.linkease-logo { width: 1.6rem; height: 1.6rem; object-fit: contain; }
+.connection-status { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.18rem 0.42rem; border: 1px solid var(--le-border); border-radius: 0.2rem; background: #f8f9fa; color: var(--le-text-muted); font-size: 0.72rem; }
+.breadcrumb { min-height: 2.35rem; border-bottom: 1px solid var(--le-border); background: #fbfbfc; font-size: var(--le-font-sm); }
+.upload-top-button { display: inline-flex; align-items: center; gap: 0.35rem; margin-left: auto; padding: 0.48rem 0.85rem; border: 1px solid #164a84; border-radius: 0.25rem; background: #1f4f8b; color: #fff; font: 700 var(--le-font-sm)/1 var(--le-font); cursor: pointer; }
+.upload-top-button:hover:not(:disabled) { background: #173d6c; }.upload-top-button:disabled { opacity: 0.6; cursor: not-allowed; }.upload-top-button lightning-icon { --slds-c-icon-color-foreground-default: #fff; }
+.upload-canvas { display: none; }
+.upload-modal { width: min(75rem, calc(100vw - 2rem)); border-radius: 0; box-shadow: 0 0.5rem 1.5rem rgba(24, 24, 24, 0.3); }
+.modal-header { padding: 1rem; border-bottom: 1px solid #b8bdc5; font-size: 1.05rem; font-weight: 500; }
+.modal-body { min-height: 9.5rem; padding: 2rem; }
+.modal-drop-zone { display: flex; align-items: center; justify-content: center; min-height: 5.5rem; border-color: #73777d; background: #fff; }
+.modal-select-label { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.45rem 0.75rem; border: 1px solid #7c8085; border-radius: 0.2rem; color: #006dcc; font-weight: 500; }
+.modal-select-label lightning-icon { --slds-c-icon-color-foreground-default: #73777d; }
+.modal-drop-zone p { color: #1f1f1f; }
+.modal-footer { min-height: 4rem; padding: 0.75rem 1.75rem; border-top: 1px solid #b8bdc5; background: #f5f5f5; }
+.upload-progress-list { margin: 0; padding: 0; list-style: none; }
+.upload-progress-list li { display: grid; grid-template-columns: auto minmax(10rem, 30rem) minmax(10rem, 1fr) 2.5rem auto; align-items: center; gap: 0.75rem; min-height: 4.5rem; padding: 0.75rem 0; border-bottom: 1px solid #d8dde6; }
+.upload-progress-list li:last-child { border-bottom: 0; }
+.upload-progress-list lightning-icon { --slds-c-icon-color-foreground-default: #2e844a; }
+.upload-file-details { display: flex; min-width: 0; flex-direction: column; gap: 0.2rem; color: #181818; font-size: var(--le-font-sm); }
+.upload-file-details span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.upload-file-details small { color: var(--le-text-muted); }
+.progress-track { height: 0.42rem; overflow: hidden; background: #c9c9c9; }.progress-fill { display: block; height: 100%; background: #0176d3; transition: width 160ms ease; }.progress-value { font-size: var(--le-font-xs); }.upload-check { --slds-c-icon-color-foreground-default: #0ba39c; }
+.upload-canvas:hover, .upload-canvas:focus-within { background: #fff; box-shadow: none; }
+.upload-canvas-prompt { min-height: 4.6rem; flex-direction: row; justify-content: flex-end; padding: 0.5rem 0.75rem; }
+.upload-canvas-prompt lightning-button { --slds-c-button-brand-color-background: #1f4f8b; --slds-c-button-brand-color-border: #164a84; }
+.upload-destination, .size-hint { display: none; }
+.library-viewbar { min-height: 3.25rem; padding: 0 0.75rem; }
+.search-box { display: inline-flex; align-items: center; width: min(26rem, 38vw); gap: 0.4rem; padding: 0.3rem 0.5rem; border: 1px solid #b8bdc5; border-radius: 0.2rem; background: #fff; }
+.search-box input { width: 100%; border: 0; outline: 0; color: var(--le-text); font: var(--le-font-sm) var(--le-font); }
+.search-box lightning-icon { --slds-c-icon-color-foreground-default: var(--le-text-muted); }
+.library-table { min-width: 48rem; }
+.library-table th:nth-child(1) { width: 40%; }.library-table th:nth-child(2) { width: 13%; }.library-table th:nth-child(3) { width: 14%; }.library-table th:nth-child(4) { width: 18%; }.library-table th:nth-child(5) { width: 15%; }
+.library-table th { padding: 0.45rem 0.65rem; background: #f1f2f4; font-size: 0.67rem; }
+.library-table td { padding: 0.43rem 0.65rem; border-bottom-color: #dfe1e5; }
+
 .upload-panel { overflow: visible; border: 1px solid var(--le-border); border-radius: 0.25rem; background: var(--le-surface); }
 .hidden-file-input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
 .upload-canvas { min-height: 8.5rem; margin: 0.75rem 0.85rem 0; border: 1px dashed #6aa9d8; border-radius: 0.25rem; background: #f8fbfe; transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease; }
@@ -64,6 +102,7 @@
 .selected-file-size { flex: 0 0 auto; color: var(--le-text-muted); }
 .upload-action { display: flex; justify-content: flex-end; padding: 0 0.65rem 0.65rem; }
 .compact-upload-action { justify-content: center; padding-top: 0.35rem; }
+.upload-restricted { margin: 0.75rem 0.85rem 0; padding: 1rem; border: 1px solid #91c8f6; border-radius: 0.25rem; background: var(--le-primary-soft); color: #032d60; font-size: var(--le-font-sm); text-align: center; }
 
 .upload-modal-backdrop { position: fixed; z-index: 9000; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(24, 24, 24, 0.5); }
 .upload-modal { position: relative; width: min(42rem, calc(100vw - 2rem)); border-radius: 0.375rem; background: var(--le-surface); box-shadow: 0 0.75rem 2rem rgba(24, 24, 24, 0.28); }
@@ -72,7 +111,7 @@
 .modal-close:hover { color: var(--le-error); }
 .modal-body { padding: 1.75rem 2rem 1.25rem; }
 .modal-drop-zone { position: relative; min-height: 7rem; padding: 1.25rem; border: 1px dashed var(--le-border-strong); border-radius: 0.25rem; background: var(--le-surface-subtle); text-align: center; }
-.modal-drop-zone lightning-input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.modal-drop-zone .modal-file-input { position: absolute; z-index: 2; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 .modal-select-label { color: var(--le-primary-hover); font-size: var(--le-font-sm); font-weight: 700; }
 .modal-drop-zone p { margin: 0.65rem 0 0; color: var(--le-text-secondary); font-size: var(--le-font-xs); }
 .modal-selected-files { margin-top: 1rem; }
@@ -110,6 +149,13 @@
 .folder-icon, .file-icon { flex: 0 0 auto; }
 .folder-icon { width: 1.15rem; height: 0.85rem; border-radius: 0.08rem; background: linear-gradient(var(--le-folder) 0 0.2rem, transparent 0.2rem) top left / 0.55rem 100% no-repeat, linear-gradient(#f8bd2b, var(--le-folder)); }
 .file-icon { width: 0.9rem; height: 1.1rem; border: 1px solid var(--le-border-strong); border-radius: 0.08rem; background: linear-gradient(#ffffff 0 0) padding-box, linear-gradient(135deg, #ffffff 50%, var(--le-border-strong) 50%) 100% 0 / 0.32rem 0.32rem no-repeat; }
+.file-icon { position: relative; border: 0; border-radius: 0.1rem; background: #64748b; }
+.file-icon::after { position: absolute; right: 0.08rem; bottom: 0.06rem; color: #fff; font-size: 0.38rem; font-weight: 800; line-height: 1; }
+.file-icon--excel { background: #2e844a; }.file-icon--excel::after { content: 'X'; }
+.file-icon--pdf { background: #ba0517; }.file-icon--pdf::after { content: 'P'; }
+.file-icon--word { background: #0176d3; }.file-icon--word::after { content: 'W'; }
+.file-icon--powerpoint { background: #d85c00; }.file-icon--powerpoint::after { content: 'P'; }
+.file-icon--generic { background: #64748b; }.file-icon--generic::after { content: '•'; font-size: 0.65rem; }
 .name-link, .name-text { min-width: 0; overflow-wrap: anywhere; padding: 0; border: 0; background: transparent; color: var(--le-text); font: 600 var(--le-font-sm)/1.4 var(--le-font); text-align: left; }
 .name-link { cursor: pointer; }
 .name-link:hover { color: var(--le-primary-hover); text-decoration: underline; }

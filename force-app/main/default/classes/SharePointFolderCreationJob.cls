@@ -2,9 +2,21 @@ public with sharing class SharePointFolderCreationJob
     implements Queueable, Database.AllowsCallouts {
 
     private Set<Id> accountIds;
+    // Present only when folder creation was initiated by a file upload. It
+    // lets us resume that exact upload after the Account Contracts folder is
+    // available.
+    private Map<Id, Set<Id>> deferredUploads;
 
     public SharePointFolderCreationJob(Set<Id> accountIds) {
+        this(accountIds, null);
+    }
+
+    public SharePointFolderCreationJob(
+        Set<Id> accountIds,
+        Map<Id, Set<Id>> deferredUploads
+    ) {
         this.accountIds = accountIds == null ? new Set<Id>() : accountIds;
+        this.deferredUploads = deferredUploads;
     }
 
     public void execute(QueueableContext context) {
@@ -37,7 +49,12 @@ public with sharing class SharePointFolderCreationJob
         }
 
         if (!pendingAccountIds.isEmpty()) {
-            System.enqueueJob(new SharePointFolderCreationJob(new Set<Id>(pendingAccountIds)));
+            System.enqueueJob(new SharePointFolderCreationJob(
+                new Set<Id>(pendingAccountIds),
+                deferredUploads
+            ));
+        } else if (deferredUploads != null && !deferredUploads.isEmpty()) {
+            System.enqueueJob(new SharePointUploadJob(deferredUploads));
         }
     }
 }

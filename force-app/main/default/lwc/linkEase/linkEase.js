@@ -1,6 +1,7 @@
 import { LightningElement, api } from 'lwc';
 import { ShowToastEvent } from 'lightning/platformShowToastEvent';
 import { notifyRecordUpdateAvailable } from 'lightning/uiRecordApi';
+import linkEaseLogo from '@salesforce/resourceUrl/linkEaseLogo';
 import uploadFile from '@salesforce/apex/LinkEaseController.uploadFile';
 import createUploadSession from '@salesforce/apex/LinkEaseController.createUploadSession';
 import uploadChunk from '@salesforce/apex/LinkEaseController.uploadChunk';
@@ -8,6 +9,7 @@ import getFolderTree from '@salesforce/apex/LinkEaseController.getFolderTree';
 import getFolderContents from '@salesforce/apex/LinkEaseController.getFolderContents';
 import requestFolderReconciliation from '@salesforce/apex/LinkEaseController.requestFolderReconciliation';
 import getFileDownloadUrl from '@salesforce/apex/LinkEaseController.getFileDownloadUrl';
+import deleteFiles from '@salesforce/apex/LinkEaseController.deleteFiles';
 
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
 // Microsoft Graph requires non-final chunks to be a multiple of 320 KiB.
@@ -40,13 +42,37 @@ export default class LinkEase extends LightningElement {
     selectedItemName;
     selectedItemWebUrl;
     selectedItemIsFolder = false;
+    selectedItemIds = [];
+    isDeleting = false;
+    searchTerm = '';
+    linkEaseLogoUrl = linkEaseLogo;
 
     get hasFiles() {
         return this.files.length > 0;
     }
 
+    get uploadComplete() {
+        return this.hasFiles && this.files.every((file) => file.progress === 100);
+    }
+
+    get modalFiles() {
+        return this.files.map((file) => ({
+            ...file,
+            progressStyle: `width: ${file.progress || 0}%;`,
+            isComplete: file.progress === 100
+        }));
+    }
+
     get uploadDisabled() {
-        return this.isUploading || !this.hasFiles || !this.recordId;
+        return this.isUploading || !this.hasFiles || !this.recordId || !this.canUploadToCurrentFolder;
+    }
+
+    get isAccountRecord() {
+        return this.recordId?.startsWith('001');
+    }
+
+    get canUploadToCurrentFolder() {
+        return !this.isAccountRecord || this.currentFolder?.id === this.rootFolder?.id;
     }
 
     get currentFolderLabel() {
@@ -54,7 +80,24 @@ export default class LinkEase extends LightningElement {
     }
 
     get downloadDisabled() {
-        return !this.selectedItemId || this.selectedItemIsFolder;
+        return this.selectedItemIds.length !== 1 || this.selectedItemIsFolder;
+    }
+
+    get selectedFileIds() {
+        return this.libraryRows
+            .filter((item) => this.selectedItemIds.includes(item.id) && !item.isFolder)
+            .map((item) => item.id);
+    }
+
+    get deleteDisabled() {
+        return this.isDeleting || this.selectedFileIds.length === 0;
+    }
+
+    get allFilesSelected() {
+        const fileIds = (this.currentFolder?.children || [])
+            .filter((item) => !item.isFolder)
+            .map((item) => item.id);
+        return fileIds.length > 0 && fileIds.every((id) => this.selectedItemIds.includes(id));
     }
 
     get folderPreparationMessage() {
@@ -71,7 +114,10 @@ export default class LinkEase extends LightningElement {
     }
 
     get libraryRows() {
-        const children = this.currentFolder?.children || [];
+        const searchTerm = this.searchTerm.trim().toLowerCase();
+        const children = (this.currentFolder?.children || []).filter((item) => {
+            return !searchTerm || (item.name || '').toLowerCase().includes(searchTerm);
+        });
         return [...children]
             .sort((left, right) => {
                 if (Boolean(left.isFolder) !== Boolean(right.isFolder)) {
@@ -83,8 +129,10 @@ export default class LinkEase extends LightningElement {
                 ...item,
                 modifiedLabel: this.formatModified(item.lastModifiedDateTime),
                 fileType: this.getFileType(item),
-                isSelected: item.id === this.selectedItemId,
-                rowClass: item.id === this.selectedItemId ? 'is-selected' : ''
+                fileIconClass: this.getFileIconClass(item),
+                sizeLabel: item.isFolder ? '--' : this.formatFileSize(item.size),
+                isSelected: this.selectedItemIds.includes(item.id),
+                rowClass: this.selectedItemIds.includes(item.id) ? 'is-selected' : ''
             }));
     }
 
@@ -97,7 +145,7 @@ export default class LinkEase extends LightningElement {
     }
 
     get columnStyles() {
-        return [0, 1, 2, 3].map((index) => ({
+        return [0, 1, 2, 3, 4].map((index) => ({
             index,
             style: this.columnWidths[index] ? `width: ${this.columnWidths[index]}px;` : ''
         }));
@@ -114,6 +162,16 @@ export default class LinkEase extends LightningElement {
         return extensionIndex > 0 && extensionIndex < name.length - 1
             ? name.slice(extensionIndex + 1).toUpperCase()
             : 'File';
+    }
+
+    getFileIconClass(item) {
+        if (item.isFolder) return 'folder-icon';
+        const extension = this.getFileType(item).toLowerCase();
+        if (extension === 'csv' || extension === 'xls' || extension === 'xlsx') return 'file-icon file-icon--excel';
+        if (extension === 'pdf') return 'file-icon file-icon--pdf';
+        if (extension === 'doc' || extension === 'docx') return 'file-icon file-icon--word';
+        if (extension === 'ppt' || extension === 'pptx') return 'file-icon file-icon--powerpoint';
+        return 'file-icon file-icon--generic';
     }
 
     connectedCallback() {
@@ -162,10 +220,25 @@ export default class LinkEase extends LightningElement {
     }
 
     focusFileInput() {
+        if (!this.canUploadToCurrentFolder) {
+            this.showToast('Uploads restricted', 'From an Account record, files can only be uploaded to the Account folder.', 'warning');
+            return;
+        }
         this.showUploadModal = true;
     }
 
+    handleSearch(event) {
+        this.searchTerm = event.target.value || '';
+    }
+
     closeUploadModal() { if (!this.isUploading) this.showUploadModal = false; }
+    finishUpload() {
+        if (!this.uploadComplete) return;
+        this.showUploadModal = false;
+        this.files = [];
+        const input = this.template.querySelector('.modal-file-input');
+        if (input) input.value = null;
+    }
     stopModalPropagation(event) { event.stopPropagation(); }
     handleModalBackdropClick() { this.closeUploadModal(); }
 
@@ -186,9 +259,9 @@ export default class LinkEase extends LightningElement {
     handleSelectionChange(event) {
         event.stopPropagation();
         if (event.target.checked) {
-            this.selectItem(event.currentTarget.dataset);
+            this.addSelectedItem(event.currentTarget.dataset);
         } else {
-            this.clearSelectedItem();
+            this.removeSelectedItem(event.currentTarget.dataset.id);
         }
     }
 
@@ -202,6 +275,30 @@ export default class LinkEase extends LightningElement {
         this.selectedItemName = name;
         this.selectedItemWebUrl = url;
         this.selectedItemIsFolder = folder === 'true';
+        this.selectedItemIds = [id];
+    }
+
+    addSelectedItem(dataset) {
+        const { id, name, url, folder } = dataset;
+        this.selectedItemId = id;
+        this.selectedItemName = name;
+        this.selectedItemWebUrl = url;
+        this.selectedItemIsFolder = folder === 'true';
+        this.selectedItemIds = [...new Set([...this.selectedItemIds, id])];
+    }
+
+    removeSelectedItem(id) {
+        this.selectedItemIds = this.selectedItemIds.filter((selectedId) => selectedId !== id);
+        if (this.selectedItemId === id) {
+            const nextId = this.selectedItemIds[this.selectedItemIds.length - 1];
+            const nextItem = (this.currentFolder?.children || []).find((item) => item.id === nextId);
+            if (nextItem) {
+                this.selectedItemId = nextItem.id;
+                this.selectedItemName = nextItem.name;
+                this.selectedItemWebUrl = nextItem.webUrl;
+                this.selectedItemIsFolder = Boolean(nextItem.isFolder);
+            } else this.clearSelectedItem();
+        }
     }
 
     clearSelectedItem() {
@@ -209,6 +306,26 @@ export default class LinkEase extends LightningElement {
         this.selectedItemName = undefined;
         this.selectedItemWebUrl = undefined;
         this.selectedItemIsFolder = false;
+        this.selectedItemIds = [];
+    }
+
+    handleSelectAllFiles(event) {
+        const fileIds = (this.currentFolder?.children || []).filter((item) => !item.isFolder).map((item) => item.id);
+        if (event.target.checked) {
+            this.selectedItemIds = [...new Set([...this.selectedItemIds, ...fileIds])];
+            if (!this.selectedItemId && fileIds.length) {
+                const firstFile = (this.currentFolder?.children || []).find((item) => item.id === fileIds[0]);
+                if (firstFile) {
+                    this.selectedItemId = firstFile.id;
+                    this.selectedItemName = firstFile.name;
+                    this.selectedItemWebUrl = firstFile.webUrl;
+                    this.selectedItemIsFolder = false;
+                }
+            }
+        } else {
+            this.selectedItemIds = this.selectedItemIds.filter((id) => !fileIds.includes(id));
+            if (!this.selectedItemIds.includes(this.selectedItemId)) this.clearSelectedItem();
+        }
     }
 
     async copyLink() {
@@ -258,6 +375,25 @@ export default class LinkEase extends LightningElement {
         }
     }
 
+    async deleteSelectedFiles() {
+        const itemIds = this.selectedFileIds;
+        if (!itemIds.length || this.isDeleting) return;
+        const confirmed = window.confirm(`Delete ${itemIds.length} selected file(s) from SharePoint? This cannot be undone here.`);
+        if (!confirmed) return;
+        this.isDeleting = true;
+        try {
+            await deleteFiles({ recordId: this.recordId, folderItemId: this.currentFolder?.id, itemIds });
+            this.clearSelectedItem();
+            await this.handleRefresh();
+            this.showToast('Files deleted', `${itemIds.length} file(s) deleted from SharePoint.`, 'success');
+        } catch (error) {
+            const message = error?.body?.message || error?.message || 'Unable to delete the selected files.';
+            this.showToast('Delete failed', message, 'error');
+        } finally {
+            this.isDeleting = false;
+        }
+    }
+
     exportCurrentTable() {
         const escape = (value) => `"${String(value || '').replace(/"/g, '""')}"`;
         const rows = [
@@ -284,20 +420,34 @@ export default class LinkEase extends LightningElement {
             this.showToast('File too large', `${oversizeFile.name} exceeds the 50 MB limit.`, 'error');
             return;
         }
-        this.files = selectedFiles.map((file) => ({
+        this.files = selectedFiles.map((file, index) => ({
+            id: `${file.name}-${file.lastModified}-${index}`,
             file,
             name: file.name,
-            sizeLabel: this.formatFileSize(file.size)
+            sizeLabel: this.formatFileSize(file.size),
+            progress: 0
         }));
+        // Selecting files starts one multi-file upload session. The Done
+        // button appears only after every selected file has finished.
+        this.handleUpload();
+    }
+
+    updateFileProgress(fileId, progress) {
+        this.files = this.files.map((file) => file.id === fileId ? { ...file, progress } : file);
     }
 
     async handleUpload() {
+        if (!this.canUploadToCurrentFolder) {
+            this.showToast('Uploads restricted', 'From an Account record, files can only be uploaded to the Account folder.', 'warning');
+            return;
+        }
         this.isUploading = true;
         let uploadedCount = 0;
         try {
             for (let index = 0; index < this.files.length; index += 1) {
                 const item = this.files[index];
                 this.uploadStatus = `Uploading ${index + 1} of ${this.files.length}: ${item.name}`;
+                this.updateFileProgress(item.id, 10);
                 if (item.file.size <= 2 * 1024 * 1024) {
                     const base64Data = await this.readFileAsBase64(item.file);
                     await uploadFile({
@@ -316,13 +466,13 @@ export default class LinkEase extends LightningElement {
                         const chunk = item.file.slice(start, Math.min(start + UPLOAD_CHUNK_SIZE, item.file.size));
                         const base64Data = await this.readBlobAsBase64(chunk);
                         await uploadChunk({ uploadUrl, base64Data, start, total: item.file.size });
+                        this.updateFileProgress(item.id, Math.min(99, Math.round(((start + chunk.size) / item.file.size) * 100)));
                     }
                 }
+                this.updateFileProgress(item.id, 100);
                 uploadedCount += 1;
             }
             this.showToast('Upload complete', `${uploadedCount} file(s) uploaded to SharePoint.`, 'success');
-            this.files = [];
-            this.template.querySelector('lightning-input').value = null;
             await this.handleRefresh();
         } catch (error) {
             const message = error?.body?.message || error?.message || 'An unexpected upload error occurred.';

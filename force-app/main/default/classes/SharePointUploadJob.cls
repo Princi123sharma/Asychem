@@ -34,6 +34,21 @@ public with sharing class SharePointUploadJob
             return;
         }
 
+        // A Contract file must be copied to the Account's Contracts folder as
+        // well as the central Legal Contracts folder.  Account-folder creation
+        // is asynchronous, so defer this file until those folder IDs exist
+        // instead of producing only the central-copy request.
+        if (pendingUploads == null) {
+            Set<Id> accountsNeedingContractFolders = findAccountsNeedingContractFolders();
+            if (!accountsNeedingContractFolders.isEmpty()) {
+                System.enqueueJob(new SharePointFolderCreationJob(
+                    accountsNeedingContractFolders,
+                    documentToEntityIds
+                ));
+                return;
+            }
+        }
+
         List<UploadRequest> uploadRequests = pendingUploads;
         if (uploadRequests == null) uploadRequests = buildUploadRequests(config);
         if (uploadRequests.isEmpty()) return;
@@ -159,6 +174,40 @@ public with sharing class SharePointUploadJob
                 for (String folderItemId : folderIds) {
                     result.add(new UploadRequest(documentId, entityId, folderItemId));
                 }
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Identifies Contract parent Accounts whose Contracts folder is not ready.
+     * The follow-on folder job requeues this same file only after it has tried
+     * to create and save the Account folder IDs.
+     */
+    private Set<Id> findAccountsNeedingContractFolders() {
+        Set<Id> contractIds = new Set<Id>();
+        for (Set<Id> entityIds : documentToEntityIds.values()) {
+            for (Id entityId : entityIds) {
+                if (entityId.getSObjectType() == Contract.SObjectType) contractIds.add(entityId);
+            }
+        }
+        if (contractIds.isEmpty()) return new Set<Id>();
+
+        Set<Id> accountIds = new Set<Id>();
+        for (Contract contractRecord : [
+            SELECT AccountId FROM Contract WHERE Id IN :contractIds
+        ]) {
+            if (contractRecord.AccountId != null) accountIds.add(contractRecord.AccountId);
+        }
+        if (accountIds.isEmpty()) return new Set<Id>();
+
+        Set<Id> result = new Set<Id>();
+        for (Account accountRecord : [
+            SELECT Id, SharePoint_Contract_Folder_Id__c
+            FROM Account WHERE Id IN :accountIds
+        ]) {
+            if (String.isBlank(accountRecord.SharePoint_Contract_Folder_Id__c)) {
+                result.add(accountRecord.Id);
             }
         }
         return result;

@@ -79,6 +79,25 @@ public with sharing class SharePointGraphClient {
         return stringValue(body.get('@microsoft.graph.downloadUrl'));
     }
 
+    /** Permanently deletes a file or folder from the configured SharePoint drive. */
+    public static void deleteItem(String driveId, String itemId) {
+        if (String.isBlank(driveId) || String.isBlank(itemId)) {
+            throw new SharePointException('Drive ID and item ID are required.');
+        }
+        HttpRequest request = new HttpRequest();
+        request.setEndpoint(
+            NAMED_CREDENTIAL + '/v1.0/drives/' + EncodingUtil.urlEncode(driveId, 'UTF-8') +
+            '/items/' + EncodingUtil.urlEncode(itemId, 'UTF-8')
+        );
+        request.setMethod('DELETE');
+        request.setTimeout(TIMEOUT_MS);
+        HttpResponse response = new Http().send(request);
+        if (response.getStatusCode() != 202 && response.getStatusCode() != 204) {
+            throw new SharePointException('Could not delete SharePoint file. HTTP ' +
+                response.getStatusCode() + ': ' + response.getBody());
+        }
+    }
+
     public static String uploadChunk(String uploadUrl, Blob chunk, Long start, Long total) {
         HttpRequest request = new HttpRequest();
         request.setEndpoint(uploadUrl);

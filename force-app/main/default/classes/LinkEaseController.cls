@@ -93,6 +93,59 @@ public with sharing class LinkEaseController {
         return downloadUrl;
     }
 
+    /** Deletes files selected in the LinkEase folder currently shown to the user. */
+    @AuraEnabled
+    public static void deleteFiles(Id recordId, String folderItemId, List<String> itemIds) {
+        if (recordId == null || String.isBlank(folderItemId) || itemIds == null || itemIds.isEmpty()) {
+            throwHandled('Select at least one file to delete.');
+        }
+        SharePoint_Config__mdt config = getConfig();
+        if (config == null || String.isBlank(config.Drive_Id__c)) {
+            throwHandled('SharePoint is not configured. Contact your administrator.');
+        }
+
+        // Ensure the caller is operating on a supported Salesforce record and
+        // delete only items that are actually children of the displayed folder.
+        getAccountId(recordId);
+        Set<String> requestedIds = new Set<String>(itemIds);
+        Map<String, String> selectedFileNamesById = new Map<String, String>();
+        for (SharePointGraphClient.DriveItem item : SharePointGraphClient.listFolderContents(
+            config.Drive_Id__c, folderItemId
+        )) {
+            if (item.isFolder != true && requestedIds.contains(item.id)) {
+                selectedFileNamesById.put(item.id, item.name);
+            }
+        }
+        if (selectedFileNamesById.size() != requestedIds.size()) {
+            throwHandled('One or more selected files are no longer in this SharePoint folder. Refresh and try again.');
+        }
+
+        Set<String> itemIdsToDelete = new Set<String>(selectedFileNamesById.keySet());
+        // A Contract upload writes two copies. When deletion begins in the
+        // Account Contracts folder, remove the same-named counterpart from the
+        // Contract's type/status-selected central Legal Contracts folder too.
+        Account parentAccount = recordId.getSObjectType() == Contract.SObjectType
+            ? getAccountWithFolders(getAccountId(recordId))
+            : null;
+        if (parentAccount != null && folderItemId == parentAccount.SharePoint_Contract_Folder_Id__c) {
+            Set<String> selectedFileNames = new Set<String>(selectedFileNamesById.values());
+            for (String targetFolderId : getTargetFolderIds(recordId, config)) {
+                if (targetFolderId == folderItemId) continue;
+                for (SharePointGraphClient.DriveItem item : SharePointGraphClient.listFolderContents(
+                    config.Drive_Id__c, targetFolderId
+                )) {
+                    if (item.isFolder != true && selectedFileNames.contains(item.name)) {
+                        itemIdsToDelete.add(item.id);
+                    }
+                }
+            }
+        }
+
+        for (String itemId : itemIdsToDelete) {
+            SharePointGraphClient.deleteItem(config.Drive_Id__c, itemId);
+        }
+    }
+
     @AuraEnabled
     public static SharePointFolder getFolderContents(Id recordId, String folderItemId) {
         if (recordId == null) throwHandled('A record ID is required.');
@@ -342,6 +395,19 @@ public with sharing class LinkEaseController {
         SharePoint_Config__mdt config,
         String folderItemId
     ) {
+        // From an Account record, browsing into Contracts or Opportunities is
+        // view-only. Account-page uploads always go to the Account root.
+        if (recordId != null && recordId.getSObjectType() == Account.SObjectType) {
+            return getTargetFolderIds(recordId, config);
+        }
+        // Contract files are mandatory copies: one goes to the parent
+        // Account's Contracts folder and one to the central Legal Contracts
+        // folder selected from Contract type and status. The LWC supplies the
+        // currently displayed Account Contracts folder, but that must not
+        // suppress the central copy.
+        if (recordId != null && recordId.getSObjectType() == Contract.SObjectType) {
+            return getTargetFolderIds(recordId, config);
+        }
         if (String.isNotBlank(folderItemId)) {
             return new List<String>{ folderItemId };
         }
