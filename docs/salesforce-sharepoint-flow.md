@@ -26,7 +26,7 @@ flowchart LR
     subgraph AP[Apex integration layer]
         FJ[SharePointFolderCreationJob\nQueueable: up to 30 Accounts]
         FS[SharePointFolderService]
-        UJ[SharePointUploadJob\nQueueable: up to 100 uploads]
+        UJ[SharePointUploadJob\nQueueable: one upload target]
         ROUTE[Resolve record and target folders]
         VALIDATE[Validate file\nlatest version, size, extension, folder ID]
         RETRY[Upload with retry\nup to 3 attempts]
@@ -113,10 +113,10 @@ flowchart LR
 - **Authentication:** Apex calls Microsoft Graph through the Salesforce Named Credential `callout:SharePoint_Graph`, backed by an External Credential. Secrets and access tokens are not stored in Apex or source control.
 - **Configuration:** The integration reads drive, parent-folder, and central-folder IDs from the `Default` `SharePoint_Config__mdt` record.
 - **Asynchronous processing:** The Salesforce transaction can finish before SharePoint work completes. Apex Jobs, debug logs, and SharePoint audit logs are therefore part of normal monitoring.
-- **Scale controls:** Folder creation processes up to 30 Accounts per queueable. File processing handles up to 100 upload requests per queueable and chains remaining work.
-- **File protection:** Files over 50 MB, files with missing content, and files with `exe`, `bat`, `cmd`, or `scr` extensions are skipped.
-- **Reliability:** Uploads are attempted up to three times. Final failures are logged, but the current implementation does not create a durable error record or automatically replay them.
-- **Duplicate names:** Microsoft Graph uses replace behavior for an existing file with the same name in the destination folder.
+- **Scale controls:** File processing handles one upload target per queueable and chains remaining work.
+- **File protection:** Trigger-driven uploads over 4 MB require the streaming-worker path; missing content and `exe`, `bat`, `cmd`, or `scr` extensions are rejected.
+- **Reliability:** Uploads are attempted up to three times. Final failures create `SharePoint_Integration_Error__c` records.
+- **Duplicate names:** Microsoft Graph uses rename behavior so distinct Salesforce files do not overwrite each other.
 
 ## Implementation references
 

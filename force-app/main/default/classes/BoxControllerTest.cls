@@ -73,7 +73,12 @@ private class BoxControllerTest {
             Contract_Folder_Id__c = 'ACC_CONTRACT_FOLDER',
             Opportunities_Folder_Id__c = 'ACC_OPP_FOLDER'
         );
-        insert acc;
+        TriggerControlHelper.isBatchRunning = true;
+        try {
+            insert acc;
+        } finally {
+            TriggerControlHelper.isBatchRunning = false;
+        }
         ids.put('accountId', acc.Id);
         
         Opportunity opp = new Opportunity(
@@ -107,6 +112,8 @@ private class BoxControllerTest {
             PathOnClient = 'test.pdf',
             VersionData = Blob.valueOf('Dummy content for Box upload')
         );
+        Boolean originalUploadSuppression = SharePointFileTriggerHandler.suppressUpload;
+        SharePointFileTriggerHandler.suppressUpload = true;
         insert cv;
         
         // Re-query to get ContentDocumentId, ContentSize, FileType
@@ -142,6 +149,7 @@ private class BoxControllerTest {
             Visibility = 'AllUsers'
         );
         insert conLink;
+        SharePointFileTriggerHandler.suppressUpload = originalUploadSuppression;
         
         // Avoid potential duplicate link to Account/User created by platform automations.
         // Do not create any extra link; three links are enough to drive determineTargetFolders.
@@ -155,7 +163,8 @@ private class BoxControllerTest {
     static void testCreateAccountFolders_success() {
         setupCustomSettings();
         Account acc = new Account(Name = 'Folder Account', Nick_Name__c = 'FA');
-        insert acc;
+        TriggerControlHelper.isBatchRunning = true;
+        try { insert acc; } finally { TriggerControlHelper.isBatchRunning = false; }
         
         Test.setMock(HttpCalloutMock.class, new BoxHttpMock());
         
@@ -302,7 +311,8 @@ private class BoxControllerTest {
             Folder_Id__c = 'ACC_FOLDER_2',
             Contract_Folder_Id__c = 'ACC_CONTRACT_2'
         );
-        insert acc;
+        TriggerControlHelper.isBatchRunning = true;
+        try { insert acc; } finally { TriggerControlHelper.isBatchRunning = false; }
         
         Contract con = new Contract(
             AccountId = acc.Id,
@@ -317,6 +327,8 @@ private class BoxControllerTest {
             PathOnClient = 'exec.pdf',
             VersionData = Blob.valueOf('Exec content')
         );
+        Boolean originalUploadSuppression = SharePointFileTriggerHandler.suppressUpload;
+        SharePointFileTriggerHandler.suppressUpload = true;
         insert cv;
         
         cv = [
@@ -332,6 +344,7 @@ private class BoxControllerTest {
             Visibility = 'AllUsers'
         );
         insert conLink;
+        SharePointFileTriggerHandler.suppressUpload = originalUploadSuppression;
         
         Test.setMock(HttpCalloutMock.class, new BoxHttpMock());
         

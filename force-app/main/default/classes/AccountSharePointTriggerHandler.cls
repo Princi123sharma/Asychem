@@ -12,9 +12,11 @@ public with sharing class AccountSharePointTriggerHandler {
             }
         }
 
-        if (!accountIdsToQueue.isEmpty()) {
+        if (!accountIdsToQueue.isEmpty() && Limits.getQueueableJobs() < Limits.getLimitQueueableJobs()) {
             queuedAccountIds.addAll(accountIdsToQueue);
             System.enqueueJob(new SharePointFolderCreationJob(accountIdsToQueue));
+        } else if (!accountIdsToQueue.isEmpty()) {
+            System.debug(LoggingLevel.WARN, 'SharePoint folder work deferred because this transaction has no queueable capacity. Run the reconciliation batch.');
         }
     }
 

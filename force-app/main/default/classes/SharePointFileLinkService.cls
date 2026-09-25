@@ -1,4 +1,24 @@
-public with sharing class SharePointFileLinkService {
+// Integration mappings are private; sync must reconcile every user's mapping.
+public without sharing class SharePointFileLinkService {
+    public static void recordFailure(Id contentDocumentId, Id linkedEntityId, String driveId, String folderItemId, String message) {
+        recordIntegrationState(contentDocumentId, linkedEntityId, driveId, folderItemId, message, 'Failed');
+    }
+
+    public static void recordPendingLargeFileUpload(Id contentDocumentId, Id linkedEntityId, String driveId, String folderItemId) {
+        recordIntegrationState(contentDocumentId, linkedEntityId, driveId, folderItemId,
+            'Large file queued for middleware upload.', 'PendingLargeFileUpload');
+    }
+
+    private static void recordIntegrationState(Id contentDocumentId, Id linkedEntityId, String driveId, String folderItemId, String message, String status) {
+        insert new SharePoint_Integration_Error__c(
+            Content_Document_Id__c = contentDocumentId == null ? null : String.valueOf(contentDocumentId),
+            Salesforce_Record_Id__c = linkedEntityId == null ? null : String.valueOf(linkedEntityId),
+            SharePoint_Drive_Id__c = driveId,
+            SharePoint_Folder_Item_Id__c = folderItemId,
+            Message__c = String.isBlank(message) ? 'SharePoint upload failed.' : message.left(32768),
+            Status__c = status
+        );
+    }
     public static void recordUpload(
         Id contentDocumentId,
         Id linkedEntityId,
@@ -53,6 +73,21 @@ public with sharing class SharePointFileLinkService {
             if (recordId != null) recordIds.add(recordId);
         }
 
+        Set<String> deletedMappingKeys = new Set<String>();
+        for (SharePoint_File_Link__c mapping : mappings) {
+            deletedMappingKeys.add(mapping.Content_Document_Id__c + ':' + mapping.Salesforce_Record_Id__c);
+        }
+        Set<String> keysWithRemainingCopies = new Set<String>();
+        for (SharePoint_File_Link__c mapping : [
+            SELECT Content_Document_Id__c, Salesforce_Record_Id__c
+            FROM SharePoint_File_Link__c
+            WHERE Content_Document_Id__c IN :documentIds
+            AND Salesforce_Record_Id__c IN :recordIds
+            AND Status__c = 'Active'
+            AND SharePoint_Item_Id__c NOT IN :sharePointItemIds
+        ]) {
+            keysWithRemainingCopies.add(mapping.Content_Document_Id__c + ':' + mapping.Salesforce_Record_Id__c);
+        }
         List<ContentDocumentLink> linksToDelete = new List<ContentDocumentLink>();
         if (!documentIds.isEmpty() && !recordIds.isEmpty()) {
             for (ContentDocumentLink link : [
@@ -62,8 +97,10 @@ public with sharing class SharePointFileLinkService {
                 AND LinkedEntityId IN :recordIds
             ]) {
                 for (SharePoint_File_Link__c mapping : mappings) {
+                    String mappingKey = mapping.Content_Document_Id__c + ':' + mapping.Salesforce_Record_Id__c;
                     if (String.valueOf(link.ContentDocumentId) == mapping.Content_Document_Id__c &&
-                        String.valueOf(link.LinkedEntityId) == mapping.Salesforce_Record_Id__c) {
+                        String.valueOf(link.LinkedEntityId) == mapping.Salesforce_Record_Id__c &&
+                        deletedMappingKeys.contains(mappingKey) && !keysWithRemainingCopies.contains(mappingKey)) {
                         linksToDelete.add(link);
                         break;
                     }

@@ -1,5 +1,7 @@
 # Salesforce and SharePoint Integration Runbook
 
+> Current implementation note: trigger-driven Salesforce File uploads process one target per queueable and support simple Graph uploads up to 4 MB. Larger Salesforce Files require the streaming-worker design in [sharepoint-target-org-setup.md](sharepoint-target-org-setup.md). Failed work is recorded in `SharePoint_Integration_Error__c`.
+
 ## 1. Purpose
 
 This document records the Salesforce to SharePoint integration currently implemented in this repository. It is intended to help a new developer understand the design, reproduce the setup, troubleshoot failures, and extend the integration safely.
@@ -88,16 +90,16 @@ The SharePoint work is asynchronous. The Account transaction can succeed even if
    - Opportunity link: the parent Account's Opportunities folder.
    - Contract link: the parent Account's Legal Contracts folder plus one central contract folder.
 6. The latest file is uploaded to every distinct target folder.
-7. A file with the same name is replaced through the Microsoft Graph `PUT ...:/content` endpoint.
-8. Each upload is retried up to three times. Failed uploads are logged after the final attempt.
-9. The job handles up to 100 upload requests and chains a new queueable for the remainder.
+7. A same-name file is renamed by Graph so a different Salesforce File does not overwrite it.
+8. Each upload is retried up to three times. Final failures are recorded in `SharePoint_Integration_Error__c`.
+9. The job handles one upload target per queueable and chains remaining work.
 
 ### File validation
 
 Uploads are skipped when:
 
 - The latest ContentVersion or its file data is unavailable.
-- The file is larger than 50 MB.
+- The file is larger than 4 MB; it requires the streaming-worker path.
 - The extension is `exe`, `bat`, `cmd`, or `scr`.
 - The required SharePoint folder ID is blank.
 

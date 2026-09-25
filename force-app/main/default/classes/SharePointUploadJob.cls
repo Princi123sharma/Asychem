@@ -1,295 +1,121 @@
-public with sharing class SharePointUploadJob
-    implements Queueable, Database.AllowsCallouts {
-
-    private static final Integer UPLOADS_PER_JOB = 100;
-    private static final Integer MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
+public with sharing class SharePointUploadJob implements Queueable, Database.AllowsCallouts {
+    // One ContentVersion per transaction avoids heap, callout-body, and callout-count failures.
     private static final Integer MAX_UPLOAD_ATTEMPTS = 3;
-    private static final Set<String> RESTRICTED_FILE_EXTENSIONS = new Set<String>{
-        'exe', 'bat', 'cmd', 'scr'
-    };
-
+    private static final Integer MAX_FOLDER_DEFERRALS = 3;
     private Map<Id, Set<Id>> documentToEntityIds;
     private List<UploadRequest> pendingUploads;
+    private Integer folderDeferrals;
 
-    public SharePointUploadJob(Map<Id, Set<Id>> documentToEntityIds) {
-        this.documentToEntityIds = new Map<Id, Set<Id>>();
-        if (documentToEntityIds == null) return;
-        for (Id documentId : documentToEntityIds.keySet()) {
-            Set<Id> entityIds = documentToEntityIds.get(documentId);
-            if (entityIds != null && !entityIds.isEmpty()) {
-                this.documentToEntityIds.put(documentId, new Set<Id>(entityIds));
-            }
+    public SharePointUploadJob(Map<Id, Set<Id>> documentToEntityIds) { this(documentToEntityIds, null, 0); }
+    public SharePointUploadJob(Map<Id, Set<Id>> documentToEntityIds, Integer folderDeferrals) {
+        this(documentToEntityIds, null, folderDeferrals);
+    }
+    private SharePointUploadJob(Map<Id, Set<Id>> input, List<UploadRequest> pending, Integer deferrals) {
+        documentToEntityIds = new Map<Id, Set<Id>>();
+        if (input != null) for (Id documentId : input.keySet()) {
+            Set<Id> entities = input.get(documentId);
+            if (entities != null && !entities.isEmpty()) documentToEntityIds.put(documentId, new Set<Id>(entities));
         }
+        pendingUploads = pending;
+        folderDeferrals = deferrals == null ? 0 : deferrals;
     }
-
-    private SharePointUploadJob(List<UploadRequest> pendingUploads) {
-        this.documentToEntityIds = new Map<Id, Set<Id>>();
-        this.pendingUploads = pendingUploads;
-    }
+    private SharePointUploadJob(List<UploadRequest> pending) { this(null, pending, 0); }
 
     public void execute(QueueableContext context) {
-        SharePoint_Config__mdt config = SharePoint_Config__mdt.getInstance('Default');
-        if (config == null || String.isBlank(config.Drive_Id__c)) {
-            System.debug(LoggingLevel.ERROR, 'SharePoint upload skipped: Default configuration has no Drive ID.');
-            return;
-        }
-
-        // A Contract file must be copied to the Account's Contracts folder as
-        // well as the central Legal Contracts folder.  Account-folder creation
-        // is asynchronous, so defer this file until those folder IDs exist
-        // instead of producing only the central-copy request.
+        SharePoint_Config__mdt config = SharePointFolderService.getConfiguration();
+        if (config == null || String.isBlank(config.Drive_Id__c)) { recordAllInputFailures('Default SharePoint configuration has no Drive ID.'); return; }
         if (pendingUploads == null) {
-            Set<Id> accountsNeedingContractFolders = findAccountsNeedingContractFolders();
-            if (!accountsNeedingContractFolders.isEmpty()) {
-                System.enqueueJob(new SharePointFolderCreationJob(
-                    accountsNeedingContractFolders,
-                    documentToEntityIds
-                ));
+            Set<Id> accountsNeedingFolders = findAccountsNeedingContractFolders();
+            if (!accountsNeedingFolders.isEmpty()) {
+                if (folderDeferrals >= MAX_FOLDER_DEFERRALS) { recordAllInputFailures('Account SharePoint folders were not created after ' + MAX_FOLDER_DEFERRALS + ' attempts.'); return; }
+                System.enqueueJob(new SharePointFolderCreationJob(accountsNeedingFolders, documentToEntityIds, folderDeferrals + 1));
                 return;
             }
         }
+        List<UploadRequest> requests = pendingUploads == null ? buildUploadRequests(config) : pendingUploads;
+        if (requests.isEmpty()) return;
+        UploadRequest request = requests.remove(0);
+        processOne(config, request);
+        if (!requests.isEmpty()) System.enqueueJob(new SharePointUploadJob(requests));
+    }
 
-        List<UploadRequest> uploadRequests = pendingUploads;
-        if (uploadRequests == null) uploadRequests = buildUploadRequests(config);
-        if (uploadRequests.isEmpty()) return;
-
-        List<UploadRequest> uploadsForThisJob = new List<UploadRequest>();
-        List<UploadRequest> remainingUploads = new List<UploadRequest>();
-        for (Integer index = 0; index < uploadRequests.size(); index++) {
-            if (index < UPLOADS_PER_JOB) uploadsForThisJob.add(uploadRequests[index]);
-            else remainingUploads.add(uploadRequests[index]);
+    private void processOne(SharePoint_Config__mdt config, UploadRequest request) {
+        if (String.isBlank(request.folderItemId)) { recordFailure(config, request, 'No SharePoint folder is available for this record.'); return; }
+        List<ContentVersion> versions = [SELECT ContentDocumentId, Title, FileExtension, ContentSize, VersionData FROM ContentVersion WHERE ContentDocumentId = :request.contentDocumentId AND IsLatest = true LIMIT 1];
+        if (versions.isEmpty()) { recordFailure(config, request, 'The latest Salesforce file version is unavailable.'); return; }
+        ContentVersion versionRecord = versions[0];
+        String fileName = versionRecord.Title + (String.isNotBlank(versionRecord.FileExtension) ? '.' + versionRecord.FileExtension : '');
+        if (versionRecord.ContentSize > SharePointGraphClient.SIMPLE_UPLOAD_MAX_BYTES) {
+            publishLargeFileUpload(request, config.Drive_Id__c, fileName);
+            SharePointFileLinkService.recordPendingLargeFileUpload(request.contentDocumentId, request.linkedEntityId, config.Drive_Id__c, request.folderItemId);
+            return;
         }
-
-        Set<Id> documentIds = new Set<Id>();
-        for (UploadRequest uploadRequest : uploadsForThisJob) documentIds.add(uploadRequest.contentDocumentId);
-
-        Map<Id, ContentVersion> versionsByDocumentId = new Map<Id, ContentVersion>();
-        for (ContentVersion versionRecord : [
-            SELECT ContentDocumentId, Title, FileExtension, ContentSize, VersionData
-            FROM ContentVersion
-            WHERE ContentDocumentId IN :documentIds AND IsLatest = true
-        ]) {
-            versionsByDocumentId.put(versionRecord.ContentDocumentId, versionRecord);
-        }
-
-        for (UploadRequest uploadRequest : uploadsForThisJob) {
-            ContentVersion versionRecord = versionsByDocumentId.get(uploadRequest.contentDocumentId);
-            if (!isValidForUpload(versionRecord, uploadRequest)) continue;
-
-            String fileName = versionRecord.Title +
-                (String.isNotBlank(versionRecord.FileExtension) ? '.' + versionRecord.FileExtension : '');
-            SharePointGraphClient.DriveItem uploadedItem = uploadWithRetry(
-                config.Drive_Id__c, uploadRequest.folderItemId, fileName,
-                versionRecord.VersionData, uploadRequest.contentDocumentId
-            );
-            SharePointFileLinkService.recordUpload(
-                uploadRequest.contentDocumentId,
-                uploadRequest.linkedEntityId,
-                config.Drive_Id__c,
-                uploadRequest.folderItemId,
-                uploadedItem,
-                fileName
-            );
-        }
-
-        if (!remainingUploads.isEmpty()) System.enqueueJob(new SharePointUploadJob(remainingUploads));
+        String validationError = validationError(versionRecord);
+        if (validationError != null) { recordFailure(config, request, validationError); return; }
+        UploadOutcome outcome = uploadWithRetry(config.Drive_Id__c, request.folderItemId, fileName, versionRecord.VersionData);
+        // DML occurs only after all callout attempts have completed.
+        if (outcome.uploadedItem != null) SharePointFileLinkService.recordUpload(request.contentDocumentId, request.linkedEntityId, config.Drive_Id__c, request.folderItemId, outcome.uploadedItem, fileName);
+        else recordFailure(config, request, outcome.errorMessage);
     }
 
     private List<UploadRequest> buildUploadRequests(SharePoint_Config__mdt config) {
-        if (documentToEntityIds.isEmpty()) return new List<UploadRequest>();
-
-        Set<Id> directAccountIds = new Set<Id>();
-        Set<Id> opportunityIds = new Set<Id>();
-        Set<Id> contractIds = new Set<Id>();
-        for (Set<Id> entityIds : documentToEntityIds.values()) {
-            for (Id entityId : entityIds) {
-                if (entityId.getSObjectType() == Account.SObjectType) directAccountIds.add(entityId);
-                else if (entityId.getSObjectType() == Opportunity.SObjectType) opportunityIds.add(entityId);
-                else if (entityId.getSObjectType() == Contract.SObjectType) contractIds.add(entityId);
-            }
-        }
-
-        Map<Id, Opportunity> opportunitiesById = opportunityIds.isEmpty()
-            ? new Map<Id, Opportunity>()
-            : new Map<Id, Opportunity>([SELECT Id, AccountId FROM Opportunity WHERE Id IN :opportunityIds]);
-        Map<Id, Contract> contractsById = contractIds.isEmpty()
-            ? new Map<Id, Contract>()
-            : new Map<Id, Contract>([
-                SELECT Id, AccountId, Type_of_Contract__c, Status
-                FROM Contract WHERE Id IN :contractIds
-            ]);
-
-        Set<Id> allAccountIds = new Set<Id>(directAccountIds);
-        for (Opportunity opportunityRecord : opportunitiesById.values()) {
-            if (opportunityRecord.AccountId != null) allAccountIds.add(opportunityRecord.AccountId);
-        }
-        for (Contract contractRecord : contractsById.values()) {
-            if (contractRecord.AccountId != null) allAccountIds.add(contractRecord.AccountId);
-        }
-
-        Map<Id, Account> accountsById = allAccountIds.isEmpty()
-            ? new Map<Id, Account>()
-            : new Map<Id, Account>([
-                SELECT Id, Name, Nick_Name__c, SharePoint_Folder_Id__c, SharePoint_Contract_Folder_Id__c,
-                       SharePoint_Opportunities_Folder_Id__c
-                FROM Account WHERE Id IN :allAccountIds
-            ]);
-
-        Map<String, Set<String>> foldersByDocumentAndEntity = new Map<String, Set<String>>();
-        for (Id documentId : documentToEntityIds.keySet()) {
-            for (Id entityId : documentToEntityIds.get(documentId)) {
-                String mappingKey = String.valueOf(documentId) + ':' + String.valueOf(entityId);
-                if (entityId.getSObjectType() == Account.SObjectType) {
-                    Account accountRecord = accountsById.get(entityId);
-                    addFolder(foldersByDocumentAndEntity, mappingKey,
-                        resolveAccountFolderId(config, accountRecord));
-                } else if (entityId.getSObjectType() == Opportunity.SObjectType) {
-                    Opportunity opportunityRecord = opportunitiesById.get(entityId);
-                    Account accountRecord = opportunityRecord == null ? null : accountsById.get(opportunityRecord.AccountId);
-                    addFolder(foldersByDocumentAndEntity, mappingKey,
-                        accountRecord == null ? null : accountRecord.SharePoint_Opportunities_Folder_Id__c);
-                } else if (entityId.getSObjectType() == Contract.SObjectType) {
-                    Contract contractRecord = contractsById.get(entityId);
-                    Account accountRecord = contractRecord == null ? null : accountsById.get(contractRecord.AccountId);
-                    addFolder(foldersByDocumentAndEntity, mappingKey,
-                        accountRecord == null ? null : accountRecord.SharePoint_Contract_Folder_Id__c);
-                    addFolder(
-                        foldersByDocumentAndEntity,
-                        mappingKey,
-                        SharePointFolderService.resolveCentralContractFolderId(
-                            config,
-                            contractRecord == null ? null : contractRecord.Type_of_Contract__c,
-                            contractRecord == null ? null : contractRecord.Status
-                        )
-                    );
-                }
-            }
-        }
-
         List<UploadRequest> result = new List<UploadRequest>();
-        for (Id documentId : documentToEntityIds.keySet()) {
-            for (Id entityId : documentToEntityIds.get(documentId)) {
-                Set<String> folderIds = foldersByDocumentAndEntity.get(String.valueOf(documentId) + ':' + String.valueOf(entityId));
-                if (folderIds == null) continue;
-                for (String folderItemId : folderIds) {
-                    result.add(new UploadRequest(documentId, entityId, folderItemId));
-                }
-            }
+        if (documentToEntityIds.isEmpty()) return result;
+        Set<Id> directAccountIds = new Set<Id>(), opportunityIds = new Set<Id>(), contractIds = new Set<Id>();
+        for (Set<Id> entities : documentToEntityIds.values()) for (Id entityId : entities) {
+            if (entityId.getSObjectType() == Account.SObjectType) directAccountIds.add(entityId);
+            else if (entityId.getSObjectType() == Opportunity.SObjectType) opportunityIds.add(entityId);
+            else if (entityId.getSObjectType() == Contract.SObjectType) contractIds.add(entityId);
+        }
+        Map<Id, Opportunity> opportunities = opportunityIds.isEmpty() ? new Map<Id, Opportunity>() : new Map<Id, Opportunity>([SELECT Id, AccountId FROM Opportunity WHERE Id IN :opportunityIds]);
+        Map<Id, Contract> contracts = contractIds.isEmpty() ? new Map<Id, Contract>() : new Map<Id, Contract>([SELECT Id, AccountId, Type_of_Contract__c, Status FROM Contract WHERE Id IN :contractIds]);
+        Set<Id> accountIds = new Set<Id>(directAccountIds);
+        for (Opportunity record : opportunities.values()) if (record.AccountId != null) accountIds.add(record.AccountId);
+        for (Contract record : contracts.values()) if (record.AccountId != null) accountIds.add(record.AccountId);
+        Map<Id, Account> accounts = accountIds.isEmpty() ? new Map<Id, Account>() : new Map<Id, Account>([SELECT Id, SharePoint_Folder_Id__c, SharePoint_Contract_Folder_Id__c, SharePoint_Opportunities_Folder_Id__c FROM Account WHERE Id IN :accountIds]);
+        for (Id documentId : documentToEntityIds.keySet()) for (Id entityId : documentToEntityIds.get(documentId)) {
+            Set<String> folders = new Set<String>();
+            if (entityId.getSObjectType() == Account.SObjectType) { Account account = accounts.get(entityId); addFolder(folders, account == null ? null : account.SharePoint_Folder_Id__c); }
+            else if (entityId.getSObjectType() == Opportunity.SObjectType) { Opportunity record = opportunities.get(entityId); Account account = record == null ? null : accounts.get(record.AccountId); addFolder(folders, account == null ? null : account.SharePoint_Opportunities_Folder_Id__c); }
+            else { Contract record = contracts.get(entityId); Account account = record == null ? null : accounts.get(record.AccountId); addFolder(folders, account == null ? null : account.SharePoint_Contract_Folder_Id__c); addFolder(folders, record == null ? null : SharePointFolderService.resolveCentralContractFolderId(config, record.Type_of_Contract__c, record.Status)); }
+            if (folders.isEmpty()) result.add(new UploadRequest(documentId, entityId, null));
+            for (String folderId : folders) result.add(new UploadRequest(documentId, entityId, folderId));
         }
         return result;
     }
 
-    /**
-     * Identifies Contract parent Accounts whose Contracts folder is not ready.
-     * The follow-on folder job requeues this same file only after it has tried
-     * to create and save the Account folder IDs.
-     */
     private Set<Id> findAccountsNeedingContractFolders() {
         Set<Id> contractIds = new Set<Id>();
-        for (Set<Id> entityIds : documentToEntityIds.values()) {
-            for (Id entityId : entityIds) {
-                if (entityId.getSObjectType() == Contract.SObjectType) contractIds.add(entityId);
-            }
-        }
-        if (contractIds.isEmpty()) return new Set<Id>();
-
+        for (Set<Id> entities : documentToEntityIds.values()) for (Id entityId : entities) if (entityId.getSObjectType() == Contract.SObjectType) contractIds.add(entityId);
         Set<Id> accountIds = new Set<Id>();
-        for (Contract contractRecord : [
-            SELECT AccountId FROM Contract WHERE Id IN :contractIds
-        ]) {
-            if (contractRecord.AccountId != null) accountIds.add(contractRecord.AccountId);
-        }
-        if (accountIds.isEmpty()) return new Set<Id>();
-
-        Set<Id> result = new Set<Id>();
-        for (Account accountRecord : [
-            SELECT Id, SharePoint_Contract_Folder_Id__c
-            FROM Account WHERE Id IN :accountIds
-        ]) {
-            if (String.isBlank(accountRecord.SharePoint_Contract_Folder_Id__c)) {
-                result.add(accountRecord.Id);
-            }
-        }
-        return result;
+        if (contractIds.isEmpty()) return accountIds;
+        for (Contract record : [SELECT AccountId FROM Contract WHERE Id IN :contractIds]) if (record.AccountId != null) accountIds.add(record.AccountId);
+        for (Account record : [SELECT Id, SharePoint_Contract_Folder_Id__c FROM Account WHERE Id IN :accountIds]) if (String.isNotBlank(record.SharePoint_Contract_Folder_Id__c)) accountIds.remove(record.Id);
+        return accountIds;
     }
-
-    private static String resolveAccountFolderId(SharePoint_Config__mdt config, Account accountRecord) {
-        if (accountRecord == null) return null;
-        if (String.isNotBlank(accountRecord.SharePoint_Folder_Id__c)) {
-            return accountRecord.SharePoint_Folder_Id__c;
-        }
-        if (config == null || String.isBlank(config.Drive_Id__c) ||
-            String.isBlank(config.Accounts_Parent_Item_Id__c)) return null;
-
-        String accountDisplayName = String.isNotBlank(accountRecord.Nick_Name__c)
-            ? accountRecord.Nick_Name__c
-            : accountRecord.Name;
-        String expectedName = accountDisplayName.trim() + ' ' + String.valueOf(Date.today().year());
-        String resolvedFolderId;
-        for (SharePointGraphClient.DriveItem item : SharePointGraphClient.listFolderContents(
-            config.Drive_Id__c, config.Accounts_Parent_Item_Id__c
-        )) {
-            if (item.isFolder && item.name == expectedName) {
-                if (String.isNotBlank(resolvedFolderId)) return null;
-                resolvedFolderId = item.id;
-            }
-        }
-        return resolvedFolderId;
+    private static void addFolder(Set<String> folders, String folderId) { if (String.isNotBlank(folderId)) folders.add(folderId); }
+    private static void publishLargeFileUpload(UploadRequest request, String driveId, String fileName) {
+        EventBus.publish(new SharePoint_Large_File__e(
+            ContentDocumentId__c = String.valueOf(request.contentDocumentId),
+            SalesforceRecordId__c = String.valueOf(request.linkedEntityId),
+            DriveId__c = driveId,
+            FolderIds__c = JSON.serialize(new List<String>{request.folderItemId}),
+            FileName__c = fileName
+        ));
     }
-
-    private static void addFolder(Map<String, Set<String>> foldersByDocumentAndEntity, String mappingKey, String folderItemId) {
-        if (String.isBlank(folderItemId)) return;
-        if (!foldersByDocumentAndEntity.containsKey(mappingKey)) foldersByDocumentAndEntity.put(mappingKey, new Set<String>());
-        foldersByDocumentAndEntity.get(mappingKey).add(folderItemId);
-    }
-
-    private static Boolean isValidForUpload(ContentVersion versionRecord, UploadRequest uploadRequest) {
-        if (versionRecord == null || versionRecord.VersionData == null) {
-            logSkip(uploadRequest, 'the latest file version is unavailable.');
-            return false;
-        }
-        if (versionRecord.ContentSize > MAX_FILE_SIZE_BYTES) {
-            logSkip(uploadRequest, 'the file exceeds the 50 MB limit.');
-            return false;
-        }
+    private static String validationError(ContentVersion versionRecord) {
+        if (versionRecord.VersionData == null) return 'The latest Salesforce file version is unavailable.';
         String extension = String.isBlank(versionRecord.FileExtension) ? '' : versionRecord.FileExtension.toLowerCase();
-        if (RESTRICTED_FILE_EXTENSIONS.contains(extension)) {
-            logSkip(uploadRequest, 'the file type ' + extension + ' is not allowed.');
-            return false;
-        }
-        return true;
+        return SharePointGraphClient.RESTRICTED_FILE_EXTENSIONS.contains(extension) ? 'File type ' + extension + ' is not allowed.' : null;
     }
-
-    private static void logSkip(UploadRequest uploadRequest, String reason) {
-        System.debug(LoggingLevel.WARN, 'SharePoint upload skipped for ContentDocument ' +
-            uploadRequest.contentDocumentId + ', folder ' + uploadRequest.folderItemId + ': ' + reason);
+    private static UploadOutcome uploadWithRetry(String driveId, String folderId, String fileName, Blob data) {
+        UploadOutcome outcome = new UploadOutcome();
+        for (Integer attempt = 1; attempt <= MAX_UPLOAD_ATTEMPTS; attempt++) try { outcome.uploadedItem = SharePointGraphClient.uploadFile(driveId, folderId, fileName, data); return outcome; } catch (Exception exceptionRecord) { outcome.errorMessage = exceptionRecord.getMessage(); }
+        outcome.errorMessage = 'Upload failed after ' + MAX_UPLOAD_ATTEMPTS + ' attempts: ' + outcome.errorMessage;
+        return outcome;
     }
-
-    private static SharePointGraphClient.DriveItem uploadWithRetry(String driveId, String folderItemId, String fileName,
-        Blob fileData, Id contentDocumentId) {
-        for (Integer attempt = 1; attempt <= MAX_UPLOAD_ATTEMPTS; attempt++) {
-            try {
-                return SharePointGraphClient.uploadFile(driveId, folderItemId, fileName, fileData);
-            } catch (Exception exceptionRecord) {
-                if (attempt == MAX_UPLOAD_ATTEMPTS) {
-                    System.debug(LoggingLevel.ERROR, 'SharePoint upload failed after ' +
-                        MAX_UPLOAD_ATTEMPTS + ' attempts for ContentDocument ' + contentDocumentId +
-                        ', folder ' + folderItemId + ': ' + exceptionRecord.getMessage());
-                }
-            }
-        }
-        return null;
-    }
-
-    private class UploadRequest {
-        private Id contentDocumentId;
-        private Id linkedEntityId;
-        private String folderItemId;
-
-        private UploadRequest(Id contentDocumentId, Id linkedEntityId, String folderItemId) {
-            this.contentDocumentId = contentDocumentId;
-            this.linkedEntityId = linkedEntityId;
-            this.folderItemId = folderItemId;
-        }
-    }
+    private static void recordFailure(SharePoint_Config__mdt config, UploadRequest request, String message) { SharePointFileLinkService.recordFailure(request.contentDocumentId, request.linkedEntityId, config.Drive_Id__c, request.folderItemId, message); }
+    private void recordAllInputFailures(String message) { for (Id documentId : documentToEntityIds.keySet()) for (Id entityId : documentToEntityIds.get(documentId)) SharePointFileLinkService.recordFailure(documentId, entityId, null, null, message); }
+    private class UploadOutcome { private SharePointGraphClient.DriveItem uploadedItem; private String errorMessage; }
+    private class UploadRequest { private Id contentDocumentId, linkedEntityId; private String folderItemId; private UploadRequest(Id documentId, Id entityId, String folderId) { contentDocumentId = documentId; linkedEntityId = entityId; folderItemId = folderId; } }
 }

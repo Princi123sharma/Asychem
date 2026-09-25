@@ -283,10 +283,20 @@ public class DailyCRMDataSyncSchedulerTest {
     @isTest
     static void testGetOrCreateAccounts() {
         Set<String> customerNames = new Set<String>{'New Customer 1', 'New Customer 2'};
-        
-        Test.startTest();
-        Map<String, Id> result = DailyCRMDataSyncScheduler.getOrCreateAccounts(customerNames);
-        Test.stopTest();
+
+        // This test validates Daily CRM account creation, not asynchronous
+        // SharePoint folder provisioning. Suppress that unrelated trigger job
+        // so Test.stopTest() cannot recursively execute folder continuations.
+        Boolean originalBatchFlag = TriggerControlHelper.isBatchRunning;
+        Map<String, Id> result;
+        try {
+            TriggerControlHelper.isBatchRunning = true;
+            Test.startTest();
+            result = DailyCRMDataSyncScheduler.getOrCreateAccounts(customerNames);
+            Test.stopTest();
+        } finally {
+            TriggerControlHelper.isBatchRunning = originalBatchFlag;
+        }
         
         System.assertEquals(2, result.size(), 'Should create two accounts');
         List<Account> accounts = [SELECT Id, Name FROM Account WHERE Name IN :customerNames];

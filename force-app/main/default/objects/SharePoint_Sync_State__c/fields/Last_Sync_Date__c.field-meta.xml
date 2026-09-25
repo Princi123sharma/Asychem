@@ -3,6 +3,7 @@
     <fullName>Last_Sync_Date__c</fullName>
     <externalId>false</externalId>
     <label>Last Sync Date</label>
+    <description>Date and time when the SharePoint deletion synchronization job last completed.</description>
     <required>false</required>
     <type>DateTime</type>
 </CustomField>

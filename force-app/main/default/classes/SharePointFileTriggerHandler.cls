@@ -23,8 +23,10 @@ public with sharing class SharePointFileTriggerHandler {
             documentToEntityIds.get(link.ContentDocumentId).add(link.LinkedEntityId);
         }
 
-        if (!documentToEntityIds.isEmpty()) {
+        if (!documentToEntityIds.isEmpty() && Limits.getQueueableJobs() < Limits.getLimitQueueableJobs()) {
             System.enqueueJob(new SharePointUploadJob(documentToEntityIds));
+        } else if (!documentToEntityIds.isEmpty()) {
+            System.debug(LoggingLevel.WARN, 'SharePoint upload work deferred because this transaction has no queueable capacity.');
         }
     }
 }

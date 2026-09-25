@@ -457,16 +457,19 @@ export default class LinkEase extends LightningElement {
                         folderItemId: this.currentFolder?.id
                     });
                 } else {
-                    const uploadUrl = await createUploadSession({
+                    const sessionResult = await createUploadSession({
                         recordId: this.recordId,
                         fileName: item.name,
-                        folderItemId: this.currentFolder?.id
+                        folderItemId: this.currentFolder?.id,
+                        totalSize: item.file.size
                     });
-                    for (let start = 0; start < item.file.size; start += UPLOAD_CHUNK_SIZE) {
-                        const chunk = item.file.slice(start, Math.min(start + UPLOAD_CHUNK_SIZE, item.file.size));
-                        const base64Data = await this.readBlobAsBase64(chunk);
-                        await uploadChunk({ uploadUrl, base64Data, start, total: item.file.size });
-                        this.updateFileProgress(item.id, Math.min(99, Math.round(((start + chunk.size) / item.file.size) * 100)));
+                    for (const sessionId of sessionResult.sessionIds) {
+                        for (let start = 0; start < item.file.size; start += UPLOAD_CHUNK_SIZE) {
+                            const chunk = item.file.slice(start, Math.min(start + UPLOAD_CHUNK_SIZE, item.file.size));
+                            const base64Data = await this.readBlobAsBase64(chunk);
+                            await uploadChunk({ sessionId, base64Data, start, total: item.file.size });
+                            this.updateFileProgress(item.id, Math.min(99, Math.round(((start + chunk.size) / item.file.size) * 100)));
+                        }
                     }
                 }
                 this.updateFileProgress(item.id, 100);

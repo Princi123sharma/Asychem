@@ -3,6 +3,7 @@
     <fullName>Delta_Link__c</fullName>
     <externalId>false</externalId>
     <label>Delta Link</label>
+    <description>Microsoft Graph delta cursor used by the SharePoint deletion synchronization job.</description>
     <length>131072</length>
     <required>false</required>
     <type>LongTextArea</type>

@@ -1,5 +1,25 @@
 @isTest
 public class BoxTestClass {
+    private static void insertAccountsWithoutSharePointAutomation(List<Account> accounts) {
+        Boolean originalBatchFlag = TriggerControlHelper.isBatchRunning;
+        try {
+            TriggerControlHelper.isBatchRunning = true;
+            insert accounts;
+        } finally {
+            TriggerControlHelper.isBatchRunning = originalBatchFlag;
+        }
+    }
+
+    private static void insertLinksWithoutSharePointAutomation(List<ContentDocumentLink> links) {
+        Boolean originalUploadSuppression = SharePointFileTriggerHandler.suppressUpload;
+        try {
+            SharePointFileTriggerHandler.suppressUpload = true;
+            insert links;
+        } finally {
+            SharePointFileTriggerHandler.suppressUpload = originalUploadSuppression;
+        }
+    }
+
     @testSetup
     static void setup() {      
         BoxCCredentials__c customSetting = new BoxCCredentials__c(name='Box_Credentials',Client_Id__c='12345678',Client_Secret__c='12345678',Access_Token__c='12345678',Refresh_Token__c='12345678');
@@ -27,9 +47,9 @@ public class BoxTestClass {
         Test.setMock(HttpCalloutMock.class,new Mock());
         
         account a= new account(name='test',Nick_Name__c='test',Folder_Id__c='123456',Opportunities_Folder_Id__c='123456',Contract_Folder_Id__c='123456');
-        insert a;
+        insertAccountsWithoutSharePointAutomation(new List<Account>{ a });
         account a2= new account(name='testing',Nick_Name__c='check');
-        insert a2;
+        insertAccountsWithoutSharePointAutomation(new List<Account>{ a2 });
         opportunity op = new opportunity(name='testop',accountId=a.Id,StageName='Proposal Sent',LeadSource='Existing Client');
         op.CloseDate=system.today();
         insert op;
@@ -49,21 +69,21 @@ public class BoxTestClass {
         contentlink.contentdocumentid=[select contentdocumentid from contentversion where id =: content.id].contentdocumentid;
         contentlink.ShareType = 'I';
         contentlink.Visibility = 'AllUsers';        
-        insert contentlink;
+        insertLinksWithoutSharePointAutomation(new List<ContentDocumentLink>{ contentlink });
         
         ContentDocumentLink contentlink2=new ContentDocumentLink();
         contentlink2.LinkedEntityId=co.id;
         contentlink2.contentdocumentid=[select contentdocumentid from contentversion where id =: content.id].contentdocumentid;
         contentlink2.ShareType = 'I';
         contentlink2.Visibility = 'AllUsers';         
-        insert contentlink2;
+        insertLinksWithoutSharePointAutomation(new List<ContentDocumentLink>{ contentlink2 });
         
         ContentDocumentLink contentlink3=new ContentDocumentLink();
         contentlink3.LinkedEntityId=op.id;
         contentlink3.contentdocumentid=[select contentdocumentid from contentversion where id =: content.id].contentdocumentid;
         contentlink3.ShareType = 'I';
         contentlink3.Visibility = 'AllUsers';         
-        insert contentlink3;
+        insertLinksWithoutSharePointAutomation(new List<ContentDocumentLink>{ contentlink3 });
         
         Test.startTest();
         // Test BoxFilesHelper.uploadFiles
@@ -78,7 +98,7 @@ public class BoxTestClass {
         Test.setMock(HttpCalloutMock.class,new Mock());
         
         account a= new account(name='test2',Nick_Name__c='test2');
-        insert a;
+        insertAccountsWithoutSharePointAutomation(new List<Account>{ a });
         opportunity op = new opportunity(name='testop2',accountId=a.Id,StageName='Proposal Sent',LeadSource='Existing Client');
         op.CloseDate=system.today();
         insert op;
@@ -95,7 +115,7 @@ public class BoxTestClass {
         contentlink.contentdocumentid=[select contentdocumentid from contentversion where id =: content.id].contentdocumentid;
         contentlink.ShareType = 'I';
         contentlink.Visibility = 'AllUsers';        
-        insert contentlink;
+        insertLinksWithoutSharePointAutomation(new List<ContentDocumentLink>{ contentlink });
         
         Test.startTest();
         BoxFilesHelper.uploadFiles(contentlink);
@@ -107,7 +127,7 @@ public class BoxTestClass {
         Test.setMock(HttpCalloutMock.class,new Mock());
         
         account a= new account(name='test3',Nick_Name__c='test3',Folder_Id__c='123456',Contract_Folder_Id__c='123456');
-        insert a;
+        insertAccountsWithoutSharePointAutomation(new List<Account>{ a });
         
         // Use only statuses that are valid in the org based on the existing test
         Contract co1 = new Contract(accountId=a.Id,Type_of_Contract__c='1-way CDA',status='Client Review');
@@ -134,7 +154,7 @@ public class BoxTestClass {
             cdl.Visibility = 'AllUsers';
             links.add(cdl);
         }
-        insert links;
+        insertLinksWithoutSharePointAutomation(links);
         
         Test.startTest();
         for(ContentDocumentLink link : links){

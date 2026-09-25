@@ -21,11 +21,15 @@ private class AccountSharePointTriggerHandlerTest {
     static void reconciliationQueryFindsOnlyAccountsNeedingRepair() {
         Account completeAccount = new Account(
             Name = 'Complete Account',
+            Nick_Name__c = 'Complete Account',
             SharePoint_Folder_Id__c = 'account-folder',
             SharePoint_Contract_Folder_Id__c = 'contracts-folder',
             SharePoint_Opportunities_Folder_Id__c = 'opportunities-folder'
         );
-        Account incompleteAccount = new Account(Name = 'Incomplete Account');
+        Account incompleteAccount = new Account(
+            Name = 'Incomplete Account',
+            Nick_Name__c = 'Incomplete Account'
+        );
         TriggerControlHelper.isBatchRunning = true;
         try {
             insert new List<Account>{ completeAccount, incompleteAccount };

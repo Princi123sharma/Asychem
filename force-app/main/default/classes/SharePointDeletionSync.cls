@@ -1,7 +1,8 @@
-public with sharing class SharePointDeletionSync
+public without sharing class SharePointDeletionSync
     implements Queueable, Database.AllowsCallouts {
 
     private static final Integer MAX_DELTA_PAGES = 90;
+    // The delta cursor is persisted on SharePoint_Sync_State__c between runs.
     @TestVisible private static SharePoint_Config__mdt configOverride;
 
     public void execute(QueueableContext context) {
@@ -18,7 +19,9 @@ public with sharing class SharePointDeletionSync
         Integer pageCount = 0;
 
         while (pageCount < MAX_DELTA_PAGES) {
-            lastResult = SharePointGraphClient.getDelta(config.Drive_Id__c, deltaLink);
+            lastResult = SharePointGraphClient.getDelta(
+                config.Drive_Id__c, deltaLink, state.Id == null && String.isBlank(deltaLink)
+            );
             pageCount += 1;
             for (SharePointGraphClient.DeltaItem item : lastResult.items) {
                 if (item.deleted == true && String.isNotBlank(item.id)) {

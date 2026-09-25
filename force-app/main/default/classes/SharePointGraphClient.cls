@@ -1,7 +1,8 @@
 public with sharing class SharePointGraphClient {
     private static final String NAMED_CREDENTIAL = 'callout:SharePoint_Graph';
-    private static final Integer TIMEOUT_MS = 120000;
-    private static final Set<String> RESTRICTED_FILE_EXTENSIONS = new Set<String>{
+    private static final Integer TIMEOUT_MS = 20000;
+    public static final Integer SIMPLE_UPLOAD_MAX_BYTES = 4 * 1024 * 1024;
+    public static final Set<String> RESTRICTED_FILE_EXTENSIONS = new Set<String>{
         'exe', 'bat', 'cmd', 'scr'
     };
 
@@ -29,6 +30,16 @@ public with sharing class SharePointGraphClient {
     public class SharePointException extends Exception {}
 
     public static String createUploadSession(String driveId, String folderItemId, String fileName) {
+        return createUploadSession(driveId, folderItemId, fileName, 'rename');
+    }
+
+    /** Creates a resumable upload session with the requested name-conflict behavior. */
+    public static String createUploadSession(
+        String driveId,
+        String folderItemId,
+        String fileName,
+        String conflictBehavior
+    ) {
         HttpRequest request = new HttpRequest();
         request.setEndpoint(NAMED_CREDENTIAL + '/v1.0/drives/' + EncodingUtil.urlEncode(driveId, 'UTF-8')
             + '/items/' + EncodingUtil.urlEncode(folderItemId, 'UTF-8') + ':/'
@@ -36,7 +47,8 @@ public with sharing class SharePointGraphClient {
         request.setMethod('POST');
         request.setHeader('Content-Type', 'application/json');
         request.setTimeout(TIMEOUT_MS);
-        request.setBody('{"item":{"@microsoft.graph.conflictBehavior":"replace"}}');
+        request.setBody('{"item":{"@microsoft.graph.conflictBehavior":"' +
+            normalizeConflictBehavior(conflictBehavior) + '"}}');
         HttpResponse response = new Http().send(request);
         if (response.getStatusCode() < 200 || response.getStatusCode() >= 300) {
             throw new SharePointException('Could not create SharePoint upload session. HTTP '
@@ -54,7 +66,11 @@ public with sharing class SharePointGraphClient {
         request.setHeader('Accept', 'application/json');
         request.setTimeout(TIMEOUT_MS);
         HttpResponse response = new Http().send(request);
-        if (response.getStatusCode() != 200) return null;
+        if (response.getStatusCode() == 404) return null;
+        if (response.getStatusCode() != 200) {
+            throw new SharePointException('Could not retrieve the SharePoint item URL. HTTP ' +
+                response.getStatusCode() + ': ' + response.getBody());
+        }
         Map<String, Object> body = (Map<String, Object>) JSON.deserializeUntyped(response.getBody());
         return (String) body.get('webUrl');
     }
@@ -166,36 +182,40 @@ public with sharing class SharePointGraphClient {
             return null;
         }
 
-        HttpRequest request = new HttpRequest();
-        request.setEndpoint(
+        String endpoint =
             NAMED_CREDENTIAL +
             '/v1.0/drives/' + EncodingUtil.urlEncode(driveId, 'UTF-8') +
             '/items/' + EncodingUtil.urlEncode(parentFolderId, 'UTF-8') +
-            '/children?$select=id,name'
-        );
-        request.setMethod('GET');
-        request.setHeader('Accept', 'application/json');
-        request.setTimeout(TIMEOUT_MS);
-
-        HttpResponse response = new Http().send(request);
-        if (response.getStatusCode() != 200) {
-            return null;
-        }
-
-        Map<String, Object> responseMap = (Map<String, Object>) JSON.deserializeUntyped(response.getBody());
-        List<Object> items = (List<Object>) responseMap.get('value');
-        if (items == null) {
-            return null;
-        }
-
-        for (Object itemObj : items) {
-            Map<String, Object> itemMap = (Map<String, Object>) itemObj;
-            String itemName = String.valueOf(itemMap.get('name'));
-            if (folderName == itemName) {
-                return String.valueOf(itemMap.get('id'));
+            '/children?$select=id,name&$orderby=name';
+        // Large parent folders are paginated by Graph. Searching only the
+        // first page can make an existing folder look missing, then cause a
+        // 409 nameAlreadyExists response on create.
+        while (String.isNotBlank(endpoint)) {
+            HttpRequest request = new HttpRequest();
+            request.setEndpoint(endpoint);
+            request.setMethod('GET');
+            request.setHeader('Accept', 'application/json');
+            request.setTimeout(TIMEOUT_MS);
+            HttpResponse response = new Http().send(request);
+            if (response.getStatusCode() == 404) return null;
+            if (response.getStatusCode() != 200) {
+                throw new SharePointException('Could not look up SharePoint folder. HTTP ' +
+                    response.getStatusCode() + ': ' + response.getBody());
             }
+            Map<String, Object> responseMap = (Map<String, Object>) JSON.deserializeUntyped(response.getBody());
+            List<Object> items = (List<Object>) responseMap.get('value');
+            if (items != null) {
+                for (Object itemObj : items) {
+                    Map<String, Object> itemMap = (Map<String, Object>) itemObj;
+                    if (folderName == String.valueOf(itemMap.get('name'))) {
+                        return String.valueOf(itemMap.get('id'));
+                    }
+                }
+            }
+            endpoint = responseMap.containsKey('@odata.nextLink')
+                ? toNamedCredentialEndpoint(String.valueOf(responseMap.get('@odata.nextLink')))
+                : null;
         }
-
         return null;
     }
 
@@ -215,43 +235,67 @@ public with sharing class SharePointGraphClient {
             throw new SharePointException('Drive ID and folder item ID are required.');
         }
 
-        HttpRequest request = new HttpRequest();
-        request.setEndpoint(
+        String endpoint =
             NAMED_CREDENTIAL +
             '/v1.0/drives/' + EncodingUtil.urlEncode(driveId, 'UTF-8') +
             '/items/' + EncodingUtil.urlEncode(folderItemId, 'UTF-8') +
-            '/children?$select=id,name,size,lastModifiedDateTime,lastModifiedBy,webUrl,file,folder&$orderby=name'
-        );
-        request.setMethod('GET');
-        request.setHeader('Accept', 'application/json');
-        request.setTimeout(TIMEOUT_MS);
-
-        HttpResponse response = new Http().send(request);
-        if (response.getStatusCode() != 200) {
-            throw new SharePointException(
-                'Could not retrieve SharePoint files. HTTP ' +
-                response.getStatusCode() + ': ' + response.getBody()
-            );
-        }
-
-        Map<String, Object> responseMap = (Map<String, Object>) JSON.deserializeUntyped(response.getBody());
-        List<Object> values = (List<Object>) responseMap.get('value');
+            '/children?$select=id,name,size,lastModifiedDateTime,lastModifiedBy,webUrl,file,folder&$orderby=name';
         List<DriveItem> children = new List<DriveItem>();
-        if (values == null) return children;
-        for (Object value : values) {
-            children.add(parseDriveItem((Map<String, Object>) value));
+        while (String.isNotBlank(endpoint)) {
+            HttpRequest request = new HttpRequest();
+            request.setEndpoint(endpoint);
+            request.setMethod('GET');
+            request.setHeader('Accept', 'application/json');
+            request.setTimeout(TIMEOUT_MS);
+            HttpResponse response = new Http().send(request);
+            if (response.getStatusCode() != 200) {
+                throw new SharePointException(
+                    'Could not retrieve SharePoint files. HTTP ' +
+                    response.getStatusCode() + ': ' + response.getBody()
+                );
+            }
+            Map<String, Object> responseMap = (Map<String, Object>) JSON.deserializeUntyped(response.getBody());
+            List<Object> values = (List<Object>) responseMap.get('value');
+            if (values != null) {
+                for (Object value : values) children.add(parseDriveItem((Map<String, Object>) value));
+            }
+            endpoint = responseMap.containsKey('@odata.nextLink')
+                ? toNamedCredentialEndpoint(String.valueOf(responseMap.get('@odata.nextLink')))
+                : null;
         }
         return children;
     }
 
     public static DeltaResult getDelta(String driveId, String deltaLink) {
+        return getDelta(driveId, deltaLink, false);
+    }
+
+    /** Returns a DriveItem's immediate parent ID, or null only when Graph reports no parent. */
+    public static String getParentItemId(String driveId, String itemId) {
+        if (String.isBlank(driveId) || String.isBlank(itemId)) return null;
+        HttpRequest request = new HttpRequest();
+        request.setEndpoint(NAMED_CREDENTIAL + '/v1.0/drives/' + EncodingUtil.urlEncode(driveId, 'UTF-8') +
+            '/items/' + EncodingUtil.urlEncode(itemId, 'UTF-8') + '?$select=parentReference');
+        request.setMethod('GET'); request.setHeader('Accept', 'application/json'); request.setTimeout(TIMEOUT_MS);
+        HttpResponse response = new Http().send(request);
+        if (response.getStatusCode() == 404) return null;
+        if (response.getStatusCode() != 200) throw new SharePointException(
+            'Could not verify SharePoint item location. HTTP ' + response.getStatusCode() + ': ' + response.getBody());
+        Map<String, Object> body = (Map<String, Object>) JSON.deserializeUntyped(response.getBody());
+        Map<String, Object> parent = (Map<String, Object>) body.get('parentReference');
+        return parent == null || parent.get('id') == null ? null : String.valueOf(parent.get('id'));
+    }
+
+    /** A new sync can request only a baseline token instead of replaying the entire drive. */
+    public static DeltaResult getDelta(String driveId, String deltaLink, Boolean startAtLatest) {
         if (String.isBlank(driveId) && String.isBlank(deltaLink)) {
             throw new SharePointException('Drive ID or delta link is required.');
         }
 
         HttpRequest request = new HttpRequest();
         request.setEndpoint(String.isBlank(deltaLink)
-            ? NAMED_CREDENTIAL + '/v1.0/drives/' + EncodingUtil.urlEncode(driveId, 'UTF-8') + '/root/delta'
+            ? NAMED_CREDENTIAL + '/v1.0/drives/' + EncodingUtil.urlEncode(driveId, 'UTF-8') +
+                '/root/delta' + (startAtLatest == true ? '?token=latest' : '')
             : toNamedCredentialEndpoint(deltaLink));
         request.setMethod('GET');
         request.setHeader('Accept', 'application/json');
@@ -287,10 +331,10 @@ public with sharing class SharePointGraphClient {
     }
 
     private static String toNamedCredentialEndpoint(String graphLink) {
-        Integer hostEnd = graphLink.indexOf('.com');
-        return hostEnd >= 0
-            ? NAMED_CREDENTIAL + graphLink.substring(hostEnd + 4)
-            : graphLink;
+        Integer schemeEnd = graphLink.indexOf('://');
+        if (schemeEnd < 0) return graphLink;
+        Integer pathStart = graphLink.indexOf('/', schemeEnd + 3);
+        return pathStart >= 0 ? NAMED_CREDENTIAL + graphLink.substring(pathStart) : graphLink;
     }
 
     /**
@@ -302,6 +346,17 @@ public with sharing class SharePointGraphClient {
         String folderItemId,
         String fileName,
         Blob fileData
+    ) {
+        return uploadFile(driveId, folderItemId, fileName, fileData, 'rename');
+    }
+
+    /** Uploads a file with the requested Graph name-conflict behavior. */
+    public static DriveItem uploadFile(
+        String driveId,
+        String folderItemId,
+        String fileName,
+        Blob fileData,
+        String conflictBehavior
     ) {
         if (String.isBlank(driveId) ||
             String.isBlank(folderItemId) ||
@@ -316,6 +371,9 @@ public with sharing class SharePointGraphClient {
         if (String.isNotBlank(extension) && RESTRICTED_FILE_EXTENSIONS.contains(extension)) {
             throw new SharePointException('File type not allowed: ' + extension);
         }
+        if (fileData.size() > SIMPLE_UPLOAD_MAX_BYTES) {
+            throw new SharePointException('Files larger than 4 MB require a chunked upload session.');
+        }
 
         String encodedFileName = EncodingUtil.urlEncode(fileName, 'UTF-8')
             .replace('+', '%20');
@@ -326,7 +384,8 @@ public with sharing class SharePointGraphClient {
             '/v1.0/drives/' + EncodingUtil.urlEncode(driveId, 'UTF-8') +
             '/items/' + EncodingUtil.urlEncode(folderItemId, 'UTF-8') +
             ':/' + encodedFileName +
-            ':/content'
+            ':/content?@microsoft.graph.conflictBehavior=' +
+            EncodingUtil.urlEncode(normalizeConflictBehavior(conflictBehavior), 'UTF-8')
         );
         request.setMethod('PUT');
         request.setHeader('Content-Type', 'application/octet-stream');
@@ -342,6 +401,12 @@ public with sharing class SharePointGraphClient {
         }
 
         return parseDriveItem(response.getBody());
+    }
+
+    private static String normalizeConflictBehavior(String value) {
+        String normalized = String.isBlank(value) ? 'rename' : value.toLowerCase();
+        return new Set<String>{ 'rename', 'replace', 'fail' }.contains(normalized)
+            ? normalized : 'rename';
     }
 
     /**

@@ -12,21 +12,23 @@ private class SharePointDeletionSyncTest {
 
     @IsTest
     static void removesTheContractFileLinkWhenTheCentralCdaCopyIsDeleted() {
-        Account accountRecord = new Account(Name = 'Deletion Sync Account');
-        insert accountRecord;
-        Contract contractRecord = new Contract(
-            AccountId = accountRecord.Id,
-            StartDate = Date.today(),
-            Status = 'Draft'
-        );
-        insert contractRecord;
+        Account accountRecord = SharePointTestDataFactory.insertAccount('Deletion Sync Account');
+        Contract contractRecord = SharePointTestDataFactory.insertReviewContract(accountRecord.Id);
         ContentVersion versionRecord = new ContentVersion(
             Title = 'deleted-file',
             PathOnClient = 'deleted-file.txt',
             VersionData = Blob.valueOf('file contents'),
             FirstPublishLocationId = contractRecord.Id
         );
-        insert versionRecord;
+        Boolean originalUploadSuppression = SharePointFileTriggerHandler.suppressUpload;
+        try {
+            // This test exercises deletion synchronization; it must not also
+            // enqueue an unrelated upload from FirstPublishLocationId.
+            SharePointFileTriggerHandler.suppressUpload = true;
+            insert versionRecord;
+        } finally {
+            SharePointFileTriggerHandler.suppressUpload = originalUploadSuppression;
+        }
         versionRecord = [
             SELECT ContentDocumentId
             FROM ContentVersion

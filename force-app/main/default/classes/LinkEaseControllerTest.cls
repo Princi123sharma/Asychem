@@ -5,6 +5,10 @@ private class LinkEaseControllerTest {
         public HttpResponse respond(HttpRequest request) {
             System.assertEquals('PUT', request.getMethod());
             System.assert(request.getEndpoint().contains('/items/account-folder:/linkease.txt:/content'));
+            System.assert(
+                request.getEndpoint().contains('@microsoft.graph.conflictBehavior=replace'),
+                'LinkEase must replace a same-name file instead of creating a duplicate.'
+            );
             HttpResponse response = new HttpResponse();
             response.setStatusCode(201);
             response.setBody(
@@ -27,6 +31,7 @@ private class LinkEaseControllerTest {
     private class ContractFolderUploadMock implements HttpCalloutMock {
         public HttpResponse respond(HttpRequest request) {
             System.assertEquals('PUT', request.getMethod());
+            System.assert(request.getEndpoint().contains('@microsoft.graph.conflictBehavior=replace'));
             if (request.getEndpoint().contains('/items/account-contract-folder:/contract.txt:/content')) {
                 contractUploadTargets.add('account-contract-folder');
             } else if (request.getEndpoint().contains('/items/central-cda-folder:/contract.txt:/content')) {
@@ -59,6 +64,23 @@ private class LinkEaseControllerTest {
         }
     }
 
+    private class UploadSessionMock implements HttpCalloutMock {
+        public HttpResponse respond(HttpRequest request) {
+            System.assertEquals('POST', request.getMethod());
+            System.assert(
+                request.getEndpoint().contains('/items/account-folder:/large-linkease.pdf:/createUploadSession')
+            );
+            System.assert(
+                request.getBody().contains('"@microsoft.graph.conflictBehavior":"replace"'),
+                'Chunked LinkEase uploads must replace a same-name file instead of creating a duplicate.'
+            );
+            HttpResponse response = new HttpResponse();
+            response.setStatusCode(200);
+            response.setBody('{"uploadUrl":"https://upload.example.test/session"}');
+            return response;
+        }
+    }
+
     private class ListFilesMock implements HttpCalloutMock {
         public HttpResponse respond(HttpRequest request) {
             System.assertEquals('GET', request.getMethod());
@@ -72,6 +94,9 @@ private class LinkEaseControllerTest {
 
     private class FolderTreeMock implements HttpCalloutMock {
         public HttpResponse respond(HttpRequest request) {
+            if (request.getEndpoint().contains('?$select=webUrl')) {
+                HttpResponse itemResponse = new HttpResponse(); itemResponse.setStatusCode(200); itemResponse.setBody('{"webUrl":"https://example.test/account"}'); return itemResponse;
+            }
             System.assertEquals('GET', request.getMethod());
             System.assert(request.getEndpoint().contains('/items/account-folder/children'));
             HttpResponse response = new HttpResponse();
@@ -95,6 +120,18 @@ private class LinkEaseControllerTest {
 
     private class NestedFolderMock implements HttpCalloutMock {
         public HttpResponse respond(HttpRequest request) {
+            if (request.getEndpoint().contains('?$select=webUrl')) {
+                HttpResponse itemResponse = new HttpResponse();
+                itemResponse.setStatusCode(200);
+                itemResponse.setBody('{"webUrl":"https://example.test/contracts"}');
+                return itemResponse;
+            }
+            if (request.getEndpoint().contains('?$select=parentReference')) {
+                HttpResponse parentResponse = new HttpResponse();
+                parentResponse.setStatusCode(200);
+                parentResponse.setBody('{"parentReference":{"id":"account-folder"}}');
+                return parentResponse;
+            }
             System.assertEquals('GET', request.getMethod());
             System.assert(request.getEndpoint().contains('/items/contracts-folder/children'));
             HttpResponse response = new HttpResponse();
@@ -114,7 +151,7 @@ private class LinkEaseControllerTest {
             Nick_Name__c = 'LinkEase Test',
             SharePoint_Folder_Id__c = 'account-folder'
         );
-        insert accountRecord;
+        TriggerControlHelper.isBatchRunning = true; insert accountRecord; TriggerControlHelper.isBatchRunning = false;
 
         LinkEaseController.configOverride = new SharePoint_Config__mdt(Drive_Id__c = 'drive-id');
         Test.setMock(HttpCalloutMock.class, new UploadMock());
@@ -133,13 +170,39 @@ private class LinkEaseControllerTest {
     }
 
     @IsTest
+    static void createsAReplaceSessionForLargeLinkEaseUploads() {
+        Account accountRecord = new Account(
+            Name = 'Large Upload Parent',
+            Nick_Name__c = 'Large Upload Parent',
+            SharePoint_Folder_Id__c = 'account-folder'
+        );
+        TriggerControlHelper.isBatchRunning = true; insert accountRecord; TriggerControlHelper.isBatchRunning = false;
+
+        LinkEaseController.configOverride = new SharePoint_Config__mdt(Drive_Id__c = 'drive-id');
+        Test.setMock(HttpCalloutMock.class, new UploadSessionMock());
+
+        Test.startTest();
+        LinkEaseController.UploadSessionResult result = LinkEaseController.createUploadSession(
+            accountRecord.Id, 'large-linkease.pdf', null, 5 * 1024 * 1024
+        );
+        Test.stopTest();
+
+        System.assertEquals(1, result.sessionIds.size());
+        SharePoint_Upload_Session__c sessionRecord = [
+            SELECT Status__c, Total_Size__c FROM SharePoint_Upload_Session__c WHERE Id = :result.sessionIds[0]
+        ];
+        System.assertEquals('Active', sessionRecord.Status__c);
+        System.assertEquals(5 * 1024 * 1024, sessionRecord.Total_Size__c);
+    }
+
+    @IsTest
     static void uploadsToTheFolderSavedOnTheAccount() {
         Account accountRecord = new Account(
             Name = 'Folder Match',
             Nick_Name__c = 'Folder Match',
             SharePoint_Folder_Id__c = 'stale-account-folder'
         );
-        insert accountRecord;
+        TriggerControlHelper.isBatchRunning = true; insert accountRecord; TriggerControlHelper.isBatchRunning = false;
 
         LinkEaseController.configOverride = new SharePoint_Config__mdt(
             Drive_Id__c = 'drive-id',
@@ -169,11 +232,11 @@ private class LinkEaseControllerTest {
             SharePoint_Folder_Id__c = 'account-folder',
             SharePoint_Contract_Folder_Id__c = 'account-contract-folder'
         );
-        insert accountRecord;
+        TriggerControlHelper.isBatchRunning = true; insert accountRecord; TriggerControlHelper.isBatchRunning = false;
         Contract contractRecord = new Contract(
             AccountId = accountRecord.Id,
             StartDate = Date.today(),
-            Status = 'Active',
+            Status = 'Client Review',
             Type_of_Contract__c = '2-way CDA'
         );
         insert contractRecord;
@@ -182,7 +245,7 @@ private class LinkEaseControllerTest {
         // Match production config: central IDs live on *Item_ID__c, not *Folder_Item_Id__c.
         LinkEaseController.configOverride = new SharePoint_Config__mdt(
             Drive_Id__c = 'drive-id',
-            CDA_Item_ID__c = 'central-cda-folder'
+            Client_Review_Item_ID__c = 'central-cda-folder'
         );
         Test.setMock(HttpCalloutMock.class, new ContractFolderUploadMock());
 
@@ -228,7 +291,7 @@ private class LinkEaseControllerTest {
             Name = 'Failure Parent', Nick_Name__c = 'Failure Parent',
             SharePoint_Folder_Id__c = 'account-folder'
         );
-        insert accountRecord;
+        TriggerControlHelper.isBatchRunning = true; insert accountRecord; TriggerControlHelper.isBatchRunning = false;
         LinkEaseController.configOverride = new SharePoint_Config__mdt(Drive_Id__c = 'drive-id');
         Test.setMock(HttpCalloutMock.class, new UploadFailureMock());
         assertHandled(accountRecord.Id, 'file.txt', 'ZmlsZQ==', 'SharePoint upload failed');
@@ -240,7 +303,7 @@ private class LinkEaseControllerTest {
             Name = 'List Parent', Nick_Name__c = 'List Parent',
             SharePoint_Folder_Id__c = 'account-folder'
         );
-        insert accountRecord;
+        TriggerControlHelper.isBatchRunning = true; insert accountRecord; TriggerControlHelper.isBatchRunning = false;
         LinkEaseController.configOverride = new SharePoint_Config__mdt(Drive_Id__c = 'drive-id');
         Test.setMock(HttpCalloutMock.class, new ListFilesMock());
 
@@ -259,7 +322,7 @@ private class LinkEaseControllerTest {
             Name = 'Tree Parent', Nick_Name__c = 'Tree Parent',
             SharePoint_Folder_Id__c = 'account-folder'
         );
-        insert accountRecord;
+        TriggerControlHelper.isBatchRunning = true; insert accountRecord; TriggerControlHelper.isBatchRunning = false;
         LinkEaseController.configOverride = new SharePoint_Config__mdt(Drive_Id__c = 'drive-id');
         Test.setMock(HttpCalloutMock.class, new FolderTreeMock());
 
@@ -283,7 +346,7 @@ private class LinkEaseControllerTest {
             Name = 'Nested Parent', Nick_Name__c = 'Nested Parent',
             SharePoint_Folder_Id__c = 'account-folder'
         );
-        insert accountRecord;
+        TriggerControlHelper.isBatchRunning = true; insert accountRecord; TriggerControlHelper.isBatchRunning = false;
         LinkEaseController.configOverride = new SharePoint_Config__mdt(Drive_Id__c = 'drive-id');
         Test.setMock(HttpCalloutMock.class, new NestedFolderMock());
 
@@ -305,7 +368,7 @@ private class LinkEaseControllerTest {
             Name = 'Opportunity Parent', Nick_Name__c = 'Opportunity Parent',
             SharePoint_Folder_Id__c = 'account-folder'
         );
-        insert accountRecord;
+        TriggerControlHelper.isBatchRunning = true; insert accountRecord; TriggerControlHelper.isBatchRunning = false;
         Opportunity opportunityRecord = new Opportunity(
             Name = 'LinkEase Opportunity', AccountId = accountRecord.Id,
             StageName = 'Prospecting', CloseDate = Date.today().addDays(30)

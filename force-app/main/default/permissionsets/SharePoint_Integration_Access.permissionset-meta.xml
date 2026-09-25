@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <label>SharePoint Integration Access</label>
+    <classAccesses><apexClass>LinkEaseController</apexClass><enabled>true</enabled></classAccesses>
+    <classAccesses><apexClass>SharePointDeletionSync</apexClass><enabled>true</enabled></classAccesses>
+    <externalCredentialPrincipalAccesses>
+        <enabled>true</enabled>
+        <externalCredentialPrincipal>SharePoint_Graph_External-SharePoint_Graph_Principal</externalCredentialPrincipal>
+    </externalCredentialPrincipalAccesses>
+    <objectPermissions><allowCreate>true</allowCreate><allowDelete>false</allowDelete><allowEdit>true</allowEdit><allowRead>true</allowRead><modifyAllRecords>false</modifyAllRecords><object>SharePoint_File_Link__c</object><viewAllRecords>false</viewAllRecords></objectPermissions>
+    <objectPermissions><allowCreate>true</allowCreate><allowDelete>false</allowDelete><allowEdit>true</allowEdit><allowRead>true</allowRead><modifyAllRecords>false</modifyAllRecords><object>SharePoint_Integration_Error__c</object><viewAllRecords>false</viewAllRecords></objectPermissions>
+</PermissionSet>

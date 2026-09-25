@@ -72,6 +72,9 @@ public with sharing class LinkEaseController {
     public static void requestFolderReconciliation(Id recordId) {
         if (recordId == null) throwHandled('A record ID is required.');
         Id accountId = getAccountId(recordId);
+        if (Limits.getQueueableJobs() >= Limits.getLimitQueueableJobs()) {
+            throwHandled('Folder preparation is queued; refresh in a moment.');
+        }
         System.enqueueJob(new SharePointFolderCreationJob(new Set<Id>{ accountId }));
     }
 
@@ -80,12 +83,11 @@ public with sharing class LinkEaseController {
         if (recordId == null || String.isBlank(itemId)) {
             throwHandled('Select a file to download.');
         }
-        // Confirm this is a supported LinkEase record before making the callout.
-        getAccountId(recordId);
         SharePoint_Config__mdt config = getConfig();
         if (config == null || String.isBlank(config.Drive_Id__c)) {
             throwHandled('SharePoint is not configured. Contact your administrator.');
         }
+        assertItemBelongsToRecord(recordId, itemId, config);
         String downloadUrl = SharePointGraphClient.getItemDownloadUrl(config.Drive_Id__c, itemId);
         if (String.isBlank(downloadUrl)) {
             throwHandled('The selected file is unavailable for download.');
@@ -106,7 +108,7 @@ public with sharing class LinkEaseController {
 
         // Ensure the caller is operating on a supported Salesforce record and
         // delete only items that are actually children of the displayed folder.
-        getAccountId(recordId);
+        assertItemBelongsToRecord(recordId, folderItemId, config);
         Set<String> requestedIds = new Set<String>(itemIds);
         Map<String, String> selectedFileNamesById = new Map<String, String>();
         for (SharePointGraphClient.DriveItem item : SharePointGraphClient.listFolderContents(
@@ -165,6 +167,7 @@ public with sharing class LinkEaseController {
         if (String.isBlank(rootFolderId)) {
             throwHandled('SharePoint folders are being prepared for this Account. Refresh in a moment.');
         }
+        if (String.isNotBlank(folderItemId)) assertDescendsFrom(config, folderItemId, rootFolderId);
 
         String accountDisplayName = String.isNotBlank(accountRecord.Nick_Name__c)
             ? accountRecord.Nick_Name__c
@@ -252,7 +255,7 @@ public with sharing class LinkEaseController {
         for (String folderId : folderIds) {
             try {
                 SharePointGraphClient.DriveItem uploadedItem = SharePointGraphClient.uploadFile(
-                    config.Drive_Id__c, folderId, fileName, fileData
+                    config.Drive_Id__c, folderId, fileName, fileData, 'replace'
                 );
                 if (uploadedFile == null) uploadedFile = uploadedItem;
             } catch (Exception exceptionRecord) {
@@ -284,24 +287,53 @@ public with sharing class LinkEaseController {
     }
 
     @AuraEnabled
-    public static String createUploadSession(Id recordId, String fileName, String folderItemId) {
+    public static UploadSessionResult createUploadSession(Id recordId, String fileName, String folderItemId, Long totalSize) {
         if (recordId == null || String.isBlank(fileName)) throwHandled('A record and file name are required.');
+        if (totalSize == null || totalSize <= 0 || totalSize > MAX_FILE_SIZE_BYTES) throwHandled('Each file must be 50 MB or smaller.');
+        String extension = fileName.contains('.') ? fileName.substringAfterLast('.').toLowerCase() : '';
+        if (RESTRICTED_FILE_EXTENSIONS.contains(extension)) throwHandled('This file type is not allowed.');
         SharePoint_Config__mdt config = getConfig();
+        if (config == null || String.isBlank(config.Drive_Id__c)) throwHandled('SharePoint is not configured. Contact your administrator.');
         List<String> folderIds = getUploadFolderIds(recordId, config, folderItemId);
         if (folderIds.isEmpty()) throwHandled('No SharePoint folder is available for this record.');
-        return SharePointGraphClient.createUploadSession(config.Drive_Id__c, folderIds[0], fileName);
+        List<SharePoint_Upload_Session__c> sessions = new List<SharePoint_Upload_Session__c>();
+        for (String folderId : folderIds) {
+            sessions.add(new SharePoint_Upload_Session__c(
+                Upload_Url__c = SharePointGraphClient.createUploadSession(
+                    config.Drive_Id__c, folderId, fileName, 'replace'
+                ),
+                Total_Size__c = totalSize,
+                Next_Byte__c = 0, Status__c = 'Active', Expires_At__c = System.now().addHours(1)
+            ));
+        }
+        insert sessions;
+        UploadSessionResult result = new UploadSessionResult();
+        result.sessionIds = new List<Id>();
+        for (SharePoint_Upload_Session__c sessionRecord : sessions) result.sessionIds.add(sessionRecord.Id);
+        return result;
     }
 
     @AuraEnabled
-    public static String uploadChunk(String uploadUrl, String base64Data, Long start, Long total) {
-        if (String.isBlank(uploadUrl) || String.isBlank(base64Data) || start == null || total == null) {
+    public static String uploadChunk(Id sessionId, String base64Data, Long start, Long total) {
+        if (sessionId == null || String.isBlank(base64Data) || start == null || total == null) {
             throwHandled('Upload chunk data is incomplete.');
         }
         Blob chunk;
         try { chunk = EncodingUtil.base64Decode(base64Data); }
         catch (Exception e) { throwHandled('The upload chunk could not be read.'); return null; }
         if (chunk.size() > 4 * 320 * 1024) throwHandled('Upload chunks must be 1.25 MB or smaller.');
-        return SharePointGraphClient.uploadChunk(uploadUrl, chunk, start, total);
+        SharePoint_Upload_Session__c sessionRecord = [
+            SELECT Upload_Url__c, Next_Byte__c, Total_Size__c, OwnerId, Status__c, Expires_At__c
+            FROM SharePoint_Upload_Session__c WHERE Id = :sessionId LIMIT 1
+        ];
+        if (sessionRecord.OwnerId != UserInfo.getUserId()) throwHandled('You cannot use this upload session.');
+        if (sessionRecord.Status__c != 'Active' || sessionRecord.Expires_At__c <= System.now()) throwHandled('This upload session has expired. Start again.');
+        if (sessionRecord.Total_Size__c.longValue() != total || sessionRecord.Next_Byte__c.longValue() != start) throwHandled('Upload chunks are out of sequence.');
+        String response = SharePointGraphClient.uploadChunk(sessionRecord.Upload_Url__c, chunk, start, total);
+        sessionRecord.Next_Byte__c = start + chunk.size();
+        if (sessionRecord.Next_Byte__c.longValue() == total) sessionRecord.Status__c = 'Completed';
+        update sessionRecord;
+        return response;
     }
 
     private static List<String> getTargetFolderIds(Id recordId, SharePoint_Config__mdt config) {
@@ -373,7 +405,7 @@ public with sharing class LinkEaseController {
         String accountDisplayName = String.isNotBlank(accountRecord.Nick_Name__c)
             ? accountRecord.Nick_Name__c
             : accountRecord.Name;
-        String expectedName = sanitizeFolderName(
+        String expectedName = SharePointFolderService.sanitizeFolderName(
             accountDisplayName + ' ' + String.valueOf(Date.today().year())
         );
         List<SharePointGraphClient.DriveItem> matches = new List<SharePointGraphClient.DriveItem>();
@@ -407,9 +439,6 @@ public with sharing class LinkEaseController {
         // suppress the central copy.
         if (recordId != null && recordId.getSObjectType() == Contract.SObjectType) {
             return getTargetFolderIds(recordId, config);
-        }
-        if (String.isNotBlank(folderItemId)) {
-            return new List<String>{ folderItemId };
         }
         return getTargetFolderIds(recordId, config);
     }
@@ -446,6 +475,37 @@ public with sharing class LinkEaseController {
     private static void addFolderId(Set<String> folderIds, String folderId) {
         if (String.isNotBlank(folderId)) folderIds.add(folderId);
     }
+    public class UploadSessionResult {
+        @AuraEnabled public List<Id> sessionIds { get; set; }
+    }
+    public class FolderReadiness { @AuraEnabled public Boolean isReady { get; set; } }
+
+    @AuraEnabled(cacheable=true)
+    public static FolderReadiness getFolderReadiness(Id recordId) {
+        Id accountId = getAccountId(recordId);
+        Account accountRecord = getAccountWithFolders(accountId);
+        FolderReadiness result = new FolderReadiness();
+        result.isReady = String.isNotBlank(accountRecord.SharePoint_Folder_Id__c) &&
+            String.isNotBlank(accountRecord.SharePoint_Contract_Folder_Id__c) &&
+            String.isNotBlank(accountRecord.SharePoint_Opportunities_Folder_Id__c);
+        return result;
+    }
+
+    private static void assertItemBelongsToRecord(Id recordId, String itemId, SharePoint_Config__mdt config) {
+        Account accountRecord = getAccountWithFolders(getAccountId(recordId));
+        if (String.isBlank(accountRecord.SharePoint_Folder_Id__c)) throwHandled('SharePoint folders are being prepared for this Account. Refresh in a moment.');
+        assertDescendsFrom(config, itemId, accountRecord.SharePoint_Folder_Id__c);
+    }
+
+    /** Never trust an item ID supplied by the browser: verify its complete ancestry. */
+    private static void assertDescendsFrom(SharePoint_Config__mdt config, String itemId, String rootFolderId) {
+        String currentId = itemId;
+        for (Integer depth = 0; depth < 50 && String.isNotBlank(currentId); depth++) {
+            if (currentId == rootFolderId) return;
+            currentId = SharePointGraphClient.getParentItemId(config.Drive_Id__c, currentId);
+        }
+        throwHandled('This SharePoint item is not in the folder assigned to this record.');
+    }
 
     private static Account getAccountWithFolders(Id accountId) {
         return [
@@ -456,19 +516,7 @@ public with sharing class LinkEaseController {
     }
 
     private static String sanitizeFolderName(String name) {
-        if (String.isBlank(name)) return 'Unnamed Account';
-        return name.trim()
-            .replace('/', ' ')
-            .replace('\\', ' ')
-            .replace(':', ' ')
-            .replace('*', ' ')
-            .replace('?', ' ')
-            .replace('"', ' ')
-            .replace('<', ' ')
-            .replace('>', ' ')
-            .replace('|', ' ')
-            .replace('#', ' ')
-            .replace('%', ' ');
+        return SharePointFolderService.sanitizeFolderName(name);
     }
 
     private static SharePoint_Config__mdt getConfig() {

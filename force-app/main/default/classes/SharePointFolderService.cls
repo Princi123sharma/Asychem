@@ -1,5 +1,13 @@
 public with sharing class SharePointFolderService {
     public class SharePointFolderException extends Exception {}
+    @TestVisible private static SharePoint_Config__mdt configOverride;
+
+    @TestVisible
+    public static SharePoint_Config__mdt getConfiguration() {
+        return Test.isRunningTest() && configOverride != null
+            ? configOverride
+            : SharePoint_Config__mdt.getInstance('Default');
+    }
 
     /**
      * Resolves or creates the SharePoint folders and returns the Account fields
@@ -11,8 +19,7 @@ public with sharing class SharePointFolderService {
             throw new SharePointFolderException('Account ID is required.');
         }
 
-        SharePoint_Config__mdt config =
-            SharePoint_Config__mdt.getInstance('Default');
+        SharePoint_Config__mdt config = getConfiguration();
 
         if (config == null ||
             String.isBlank(config.Drive_Id__c) ||
@@ -222,7 +229,7 @@ public with sharing class SharePointFolderService {
         }
     }
 
-    private static String sanitizeFolderName(String name) {
+    public static String sanitizeFolderName(String name) {
         if (String.isBlank(name)) {
             return 'Unnamed Account';
         }

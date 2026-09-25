@@ -65,6 +65,26 @@ public with sharing class BoxController {
     // PUBLIC METHODS
     // ========================================
     /**
+     * Legacy Visualforce callback entry point retained for BoxLogin.page.
+     * OAuth exchange is handled by the Named Credential; there is no Apex
+     * callback work to perform, so this deliberately renders the page.
+     */
+    public PageReference redirectOnCallback() {
+        return null;
+    }
+
+    // The legacy page requires these Visualforce properties. Box OAuth is now
+    // configured through Named Credentials, so this controller must not expose
+    // credentials or manufacture a browser OAuth URL.
+    public Boolean getHasToken() {
+        return false;
+    }
+
+    public String getAuthUrl() {
+        return '#';
+    }
+
+    /**
      * @description Creates folder structure for an account using BoxFolderIds__c custom setting
      * Creates main account folder and subfolders (Legal Contracts, Opportunities)
      * @param accountId Account ID to create folders for
