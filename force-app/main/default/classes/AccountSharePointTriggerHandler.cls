@@ -1,7 +1,7 @@
 public with sharing class AccountSharePointTriggerHandler {
     private static Set<Id> queuedAccountIds = new Set<Id>();
 
-    public static void handleAfterInsertOrUpdate(List<Account> accountRecords) {
+    public static void handleAfterInsert(List<Account> accountRecords) {
         if (TriggerControlHelper.isBatchRunning || accountRecords == null) return;
 
         Set<Id> accountIdsToQueue = new Set<Id>();
@@ -16,7 +16,11 @@ public with sharing class AccountSharePointTriggerHandler {
             queuedAccountIds.addAll(accountIdsToQueue);
             System.enqueueJob(new SharePointFolderCreationJob(accountIdsToQueue));
         } else if (!accountIdsToQueue.isEmpty()) {
-            System.debug(LoggingLevel.WARN, 'SharePoint folder work deferred because this transaction has no queueable capacity. Run the reconciliation batch.');
+            List<SharePoint_Folder_Provisioning__e> deferredEvents = new List<SharePoint_Folder_Provisioning__e>();
+            for (Id accountId : accountIdsToQueue) {
+                deferredEvents.add(new SharePoint_Folder_Provisioning__e(Account_Id__c = String.valueOf(accountId)));
+            }
+            EventBus.publish(deferredEvents);
         }
     }
 

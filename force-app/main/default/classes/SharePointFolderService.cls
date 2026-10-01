@@ -84,14 +84,6 @@ public with sharing class SharePointFolderService {
         );
     }
 
-    /**
-     * Retained for callers that explicitly need an immediate save. Queueable
-     * folder processing should use resolveAccountFolderUpdate instead.
-     */
-    public static void createAccountFolders(Id accountId) {
-        update resolveAccountFolderUpdate(accountId);
-    }
-
     public static String resolveContractFolderName(String contractType, String contractStatus) {
         String normalizedType = String.isBlank(contractType) ? '' : contractType.trim();
         String normalizedStatus = String.isBlank(contractStatus) ? '' : contractStatus.trim();

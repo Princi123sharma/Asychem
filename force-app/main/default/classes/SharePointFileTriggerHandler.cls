@@ -26,7 +26,16 @@ public with sharing class SharePointFileTriggerHandler {
         if (!documentToEntityIds.isEmpty() && Limits.getQueueableJobs() < Limits.getLimitQueueableJobs()) {
             System.enqueueJob(new SharePointUploadJob(documentToEntityIds));
         } else if (!documentToEntityIds.isEmpty()) {
-            System.debug(LoggingLevel.WARN, 'SharePoint upload work deferred because this transaction has no queueable capacity.');
+            List<SharePoint_Deferred_File_Upload__e> deferredEvents = new List<SharePoint_Deferred_File_Upload__e>();
+            for (Id documentId : documentToEntityIds.keySet()) {
+                for (Id entityId : documentToEntityIds.get(documentId)) {
+                    deferredEvents.add(new SharePoint_Deferred_File_Upload__e(
+                        Content_Document_Id__c = String.valueOf(documentId),
+                        Salesforce_Record_Id__c = String.valueOf(entityId)
+                    ));
+                }
+            }
+            EventBus.publish(deferredEvents);
         }
     }
 }

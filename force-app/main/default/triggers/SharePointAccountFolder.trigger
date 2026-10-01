@@ -1,3 +1,3 @@
-trigger SharePointAccountFolder on Account (after insert, after update) {
-    AccountSharePointTriggerHandler.handleAfterInsertOrUpdate(Trigger.new);
+trigger SharePointAccountFolder on Account (after insert) {
+    AccountSharePointTriggerHandler.handleAfterInsert(Trigger.new);
 }

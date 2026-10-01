@@ -7,9 +7,6 @@
  */
 public with sharing class LinkEaseController {
     private static final Integer MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
-    private static final Set<String> RESTRICTED_FILE_EXTENSIONS = new Set<String>{
-        'exe', 'bat', 'cmd', 'scr'
-    };
     @TestVisible private static SharePoint_Config__mdt configOverride;
 
     public class UploadResult {
@@ -236,7 +233,7 @@ public with sharing class LinkEaseController {
         }
 
         String extension = fileName.contains('.') ? fileName.substringAfterLast('.').toLowerCase() : '';
-        if (RESTRICTED_FILE_EXTENSIONS.contains(extension)) {
+        if (SharePointGraphClient.RESTRICTED_FILE_EXTENSIONS.contains(extension)) {
             throwHandled('This file type is not allowed.');
         }
 
@@ -255,7 +252,7 @@ public with sharing class LinkEaseController {
         for (String folderId : folderIds) {
             try {
                 SharePointGraphClient.DriveItem uploadedItem = SharePointGraphClient.uploadFile(
-                    config.Drive_Id__c, folderId, fileName, fileData, 'replace'
+                    config.Drive_Id__c, folderId, fileName, fileData, 'rename'
                 );
                 if (uploadedFile == null) uploadedFile = uploadedItem;
             } catch (Exception exceptionRecord) {
@@ -291,7 +288,7 @@ public with sharing class LinkEaseController {
         if (recordId == null || String.isBlank(fileName)) throwHandled('A record and file name are required.');
         if (totalSize == null || totalSize <= 0 || totalSize > MAX_FILE_SIZE_BYTES) throwHandled('Each file must be 50 MB or smaller.');
         String extension = fileName.contains('.') ? fileName.substringAfterLast('.').toLowerCase() : '';
-        if (RESTRICTED_FILE_EXTENSIONS.contains(extension)) throwHandled('This file type is not allowed.');
+        if (SharePointGraphClient.RESTRICTED_FILE_EXTENSIONS.contains(extension)) throwHandled('This file type is not allowed.');
         SharePoint_Config__mdt config = getConfig();
         if (config == null || String.isBlank(config.Drive_Id__c)) throwHandled('SharePoint is not configured. Contact your administrator.');
         List<String> folderIds = getUploadFolderIds(recordId, config, folderItemId);
@@ -300,7 +297,7 @@ public with sharing class LinkEaseController {
         for (String folderId : folderIds) {
             sessions.add(new SharePoint_Upload_Session__c(
                 Upload_Url__c = SharePointGraphClient.createUploadSession(
-                    config.Drive_Id__c, folderId, fileName, 'replace'
+                    config.Drive_Id__c, folderId, fileName, 'rename'
                 ),
                 Total_Size__c = totalSize,
                 Next_Byte__c = 0, Status__c = 'Active', Expires_At__c = System.now().addHours(1)

@@ -6,8 +6,8 @@ private class LinkEaseControllerTest {
             System.assertEquals('PUT', request.getMethod());
             System.assert(request.getEndpoint().contains('/items/account-folder:/linkease.txt:/content'));
             System.assert(
-                request.getEndpoint().contains('@microsoft.graph.conflictBehavior=replace'),
-                'LinkEase must replace a same-name file instead of creating a duplicate.'
+                request.getEndpoint().contains('@microsoft.graph.conflictBehavior=rename'),
+                'LinkEase must retain same-name files by creating a renamed copy.'
             );
             HttpResponse response = new HttpResponse();
             response.setStatusCode(201);
@@ -31,7 +31,7 @@ private class LinkEaseControllerTest {
     private class ContractFolderUploadMock implements HttpCalloutMock {
         public HttpResponse respond(HttpRequest request) {
             System.assertEquals('PUT', request.getMethod());
-            System.assert(request.getEndpoint().contains('@microsoft.graph.conflictBehavior=replace'));
+            System.assert(request.getEndpoint().contains('@microsoft.graph.conflictBehavior=rename'));
             if (request.getEndpoint().contains('/items/account-contract-folder:/contract.txt:/content')) {
                 contractUploadTargets.add('account-contract-folder');
             } else if (request.getEndpoint().contains('/items/central-cda-folder:/contract.txt:/content')) {
@@ -71,8 +71,8 @@ private class LinkEaseControllerTest {
                 request.getEndpoint().contains('/items/account-folder:/large-linkease.pdf:/createUploadSession')
             );
             System.assert(
-                request.getBody().contains('"@microsoft.graph.conflictBehavior":"replace"'),
-                'Chunked LinkEase uploads must replace a same-name file instead of creating a duplicate.'
+                request.getBody().contains('"@microsoft.graph.conflictBehavior":"rename"'),
+                'Chunked LinkEase uploads must retain same-name files by creating a renamed copy.'
             );
             HttpResponse response = new HttpResponse();
             response.setStatusCode(200);
