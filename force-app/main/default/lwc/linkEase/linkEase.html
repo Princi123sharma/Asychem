@@ -1,6 +1,10 @@
 <template>
     <div class="link-ease-shell">
         <textarea class="clipboard-fallback" aria-hidden="true" tabindex="-1"></textarea>
+        <header class="page-header">
+            <div class="header-title"><img class="linkease-logo" src={linkEaseLogoUrl} alt="" /><div><h1>LinkEase</h1><span class="sync-pill"><span class="sync-dot"></span>Synced</span></div></div>
+            <div class="header-actions"><span class="sharepoint-connected" title="SharePoint connected"><span class="sharepoint-logo" aria-hidden="true">S</span><span>Connected</span></span><button class="open-sharepoint-button" type="button" onclick={openInSharePoint} title="Open selected file or current folder in SharePoint"><lightning-icon icon-name="utility:open" size="x-small"></lightning-icon><span>Open in SharePoint</span></button><button class="theme-toggle" type="button" onclick={toggleTheme} aria-label={themeToggleLabel} title={themeToggleLabel}><span aria-hidden="true">{themeToggleIcon}</span></button></div>
+        </header>
         <nav class="breadcrumb" aria-label="SharePoint folder path">
             <template for:each={breadcrumbs} for:item="crumb" for:index="index">
                 <span key={crumb.id} class="breadcrumb-item">
@@ -9,17 +13,11 @@
                     <template if:false={crumb.isLast}><span class="breadcrumb-sep" aria-hidden="true">&rsaquo;</span></template>
                 </span>
             </template>
-            <template if:true={canUploadToCurrentFolder}>
-                <button class="upload-top-button" type="button" onclick={focusFileInput} disabled={isUploading}><lightning-icon icon-name="utility:upload" size="x-small"></lightning-icon><span>Upload Files</span></button>
-            </template>
         </nav>
 
         <lightning-card class="files-card">
             <div class="link-ease-panel">
-                <div class="file-header">
-                    <div class="file-heading"><img class="linkease-logo" src={linkEaseLogoUrl} alt="" /><span>LinkEase</span></div>
-                    <div class="connection-status"><span class="sharepoint-logo" aria-hidden="true">S</span><span>Connected</span></div>
-                </div>
+                <section class="summary-grid" aria-label="Current folder summary"><article class="summary-card"><span>Files</span><strong>{currentFileCount}</strong><small>in this SharePoint folder</small></article><article class="summary-card"><span>Storage used</span><strong>{currentFolderSizeLabel}</strong><small>files currently visible</small></article><article class="summary-card"><span>Location</span><strong>SharePoint</strong><small>{currentFolderLabel}</small></article></section>
 
                 <template if:true={showUploadModal}>
                     <section class="upload-modal-backdrop" role="presentation" onclick={handleModalBackdropClick}>
@@ -40,7 +38,7 @@
                                     </ul>
                                 </template>
                                 <template if:false={hasFiles}>
-                                    <div class="modal-drop-zone">
+                                    <div class="modal-drop-zone" ondragover={handleDragOver} ondragleave={handleDragLeave} ondrop={handleDrop}>
                                         <input class="modal-file-input" type="file" multiple disabled={isUploading} onchange={handleFileChange} aria-label="Select files to upload" />
                                         <span class="modal-select-label"><lightning-icon icon-name="utility:upload" size="x-small"></lightning-icon> Select Files</span><p>or drop files here</p>
                                     </div>
@@ -57,9 +55,9 @@
                 <template if:true={isUploading}><lightning-spinner alternative-text="Uploading files to SharePoint" size="small"></lightning-spinner><p class="slds-text-body_small slds-m-top_small">{uploadStatus}</p></template>
 
                 <template if:true={canUploadToCurrentFolder}>
-                    <section class="upload-panel upload-canvas" aria-label="Upload files">
+                    <section class="upload-panel upload-canvas" aria-label="Upload files" ondragover={handleDragOver} ondragleave={handleDragLeave} ondrop={handleDrop}>
                         <lightning-input class="hidden-file-input" type="file" label="Upload files" variant="label-hidden" multiple disabled={isUploading} onchange={handleFileChange}></lightning-input>
-                        <div class="upload-canvas-prompt"><lightning-button label="Upload Files" variant="brand" onclick={focusFileInput} disabled={isUploading}></lightning-button><p class="upload-destination">Files will be uploaded to: {currentFolderLabel}</p><p class="size-hint">Maximum file size: 50 MB</p></div>
+                        <div class="upload-canvas-prompt"><lightning-icon icon-name="utility:upload" size="small"></lightning-icon><strong>Drag files here, or browse</strong><span>Maximum file size: 50 MB</span><lightning-button label="Browse files" variant="brand" onclick={focusFileInput} disabled={isUploading}></lightning-button></div>
                         <template if:true={hasFiles}>
                             <ul class="selected-files" aria-label="Selected files"><template for:each={files} for:item="file"><li key={file.name}><span class="selected-file-name">{file.name}</span><span class="selected-file-size">{file.sizeLabel}</span></li></template></ul>
                             <div class="upload-action compact-upload-action"><lightning-button variant="brand" label="Upload to SharePoint" onclick={handleUpload} disabled={uploadDisabled}></lightning-button></div>
@@ -71,19 +69,17 @@
                 </template>
 
                 <div class="library-section">
+                    <template if:true={libraryErrorMessage}><div class="error-banner" role="alert"><lightning-icon icon-name="utility:error" size="x-small"></lightning-icon><span>{libraryErrorMessage}</span><button type="button" onclick={handleRefresh}>Retry</button></div></template>
                     <div class="library-viewbar">
                         <div class="search-box"><lightning-icon icon-name="utility:search" size="x-small"></lightning-icon><input type="search" placeholder="Search all files..." value={searchTerm} oninput={handleSearch} aria-label="Search files" /></div>
-                        <div class="library-actions" role="toolbar" aria-label="Document actions">
-                            <button class="library-action" type="button" onclick={copyLink} title="Copy link"><lightning-icon icon-name="utility:link" size="xx-small"></lightning-icon><span>Copy link</span></button>
-                            <button class="library-action" type="button" onclick={downloadSelectedFile} disabled={downloadDisabled} title="Download selected file"><lightning-icon icon-name="utility:download" size="xx-small"></lightning-icon><span>Download</span></button>
-                            <button class="library-action" type="button" onclick={deleteSelectedFiles} disabled={deleteDisabled} title="Delete selected files from SharePoint"><lightning-icon icon-name="utility:delete" size="xx-small"></lightning-icon><span>Delete</span></button>
-                            <button class="library-action" type="button" onclick={exportCurrentTable} title="Export current file list"><lightning-icon icon-name="utility:export" size="xx-small"></lightning-icon><span>Export</span></button>
-                            <button class="library-action" type="button" onclick={openInSharePoint} title="Open current folder in SharePoint"><lightning-icon icon-name="utility:open" size="xx-small"></lightning-icon><span>Open in SharePoint</span></button>
-                        </div>
+                        <div class="filter-group" role="group" aria-label="File filters"><template for:each={filterOptions} for:item="filter"><button key={filter.key} class={filter.className} type="button" data-filter={filter.key} onclick={handleFilter}>{filter.label}</button></template></div>
+                        <div class="view-toggle" role="group" aria-label="Library view"><button class="icon-button" type="button" onclick={setListView} aria-label="List view"><lightning-icon icon-name="utility:list" size="xx-small"></lightning-icon></button><button class="icon-button" type="button" onclick={setGridView} aria-label="Grid view"><lightning-icon icon-name="utility:apps" size="xx-small"></lightning-icon></button></div>
                     </div>
+                    <template if:true={showBulkActions}><div class="bulk-bar" role="toolbar" aria-label="Selected file actions"><span>{selectedCount} selected</span><template if:true={showBulkDownload}><button type="button" onclick={downloadSelectedFile}>Download</button></template><button type="button" onclick={copyLink}>Copy link</button><button type="button" onclick={deleteSelectedFiles}>Delete</button></div></template>
                     <template if:true={isPreparingFolders}><div class="folder-preparing" role="status"><lightning-icon icon-name="utility:sync" size="x-small"></lightning-icon><span>{folderPreparationMessage}</span></div></template>
                     <template if:true={isLoadingFiles}><lightning-spinner alternative-text="Loading SharePoint files" size="small"></lightning-spinner></template>
                     <template if:true={hasLibraryRows}>
+                    <template if:true={isListView}>
                         <div class="table-wrap">
                             <table class="library-table" style={tableStyle}>
                                 <colgroup><template for:each={columnStyles} for:item="column"><col key={column.index} style={column.style}></col></template></colgroup>
@@ -108,7 +104,9 @@
                             </table>
                         </div>
                     </template>
-                    <template if:true={showNoFilesMessage}><p class="empty-state">No files are currently in this SharePoint folder.</p></template>
+                    <template if:true={isGridView}><div class="file-grid"><template for:each={libraryRows} for:item="item"><article key={item.id} class="file-tile" data-id={item.id} data-name={item.name} data-url={item.webUrl} data-folder={item.isFolder} onclick={handleRowSelect}><span class={item.fileIconClass} aria-hidden="true"></span><strong>{item.name}</strong><small>{item.modifiedLabel} · {item.sizeLabel}</small><template if:true={item.isFolder}><button type="button" data-id={item.id} data-name={item.name} onclick={handleFolderOpen}>Open folder</button></template></article></template></div></template>
+                    </template>
+                    <template if:true={showNoFilesMessage}><div class="empty-state"><lightning-icon icon-name="utility:folder" size="medium"></lightning-icon><strong>This folder is empty</strong><span>Upload a file to get started.</span></div></template>
                 </div>
             </div>
         </lightning-card>

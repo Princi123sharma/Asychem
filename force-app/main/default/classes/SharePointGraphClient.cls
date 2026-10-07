@@ -115,9 +115,16 @@ public with sharing class SharePointGraphClient {
     }
 
     public static String uploadChunk(String uploadUrl, Blob chunk, Long start, Long total) {
+        if (String.isBlank(uploadUrl) || chunk == null || chunk.size() == 0 || start == null || total == null) {
+            throw new SharePointException('Upload URL, chunk data, start position, and total size are required.');
+        }
         HttpRequest request = new HttpRequest();
         request.setEndpoint(uploadUrl);
         request.setMethod('PUT');
+        // Chunk contents are always binary. Do not infer a content type from
+        // the filename: that keeps PDFs, Office files, images, XML, and CSV
+        // on the exact same Microsoft Graph upload path.
+        request.setHeader('Content-Type', 'application/octet-stream');
         request.setHeader('Content-Length', String.valueOf(chunk.size()));
         request.setHeader('Content-Range', 'bytes ' + start + '-' + (start + chunk.size() - 1) + '/' + total);
         request.setTimeout(TIMEOUT_MS);

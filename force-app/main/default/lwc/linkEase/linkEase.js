@@ -45,6 +45,10 @@ export default class LinkEase extends LightningElement {
     selectedItemIds = [];
     isDeleting = false;
     searchTerm = '';
+    activeFilter = 'all';
+    viewMode = 'list';
+    theme = 'system';
+    libraryErrorMessage = '';
     linkEaseLogoUrl = linkEaseLogo;
 
     get hasFiles() {
@@ -104,6 +108,36 @@ export default class LinkEase extends LightningElement {
         return 'Preparing your SharePoint folders. This page will update automatically.';
     }
 
+    get currentFileCount() {
+        return (this.currentFolder?.children || []).filter((item) => !item.isFolder).length;
+    }
+
+    get currentFolderSize() {
+        return (this.currentFolder?.children || []).reduce((total, item) => total + (item.isFolder ? 0 : (item.size || 0)), 0);
+    }
+
+    get currentFolderSizeLabel() { return this.formatFileSize(this.currentFolderSize); }
+    get selectedCount() { return this.selectedFileIds.length; }
+    get showBulkActions() { return this.selectedCount > 0; }
+    get showBulkDownload() { return this.selectedCount === 1 && !this.selectedItemIsFolder; }
+    get isListView() { return this.viewMode === 'list'; }
+    get isGridView() { return this.viewMode === 'grid'; }
+    get themeToggleIcon() {
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        return this.theme === 'dark' || (this.theme === 'system' && prefersDark) ? '☀' : '☾';
+    }
+    get themeToggleLabel() {
+        return this.themeToggleIcon === '☀' ? 'Switch to light theme' : 'Switch to dark theme';
+    }
+    get filterOptions() {
+        return [
+            { key: 'all', label: 'All', className: this.activeFilter === 'all' ? 'filter-chip is-active' : 'filter-chip' },
+            { key: 'pdf', label: 'PDF', className: this.activeFilter === 'pdf' ? 'filter-chip is-active' : 'filter-chip' },
+            { key: 'excel', label: 'Excel', className: this.activeFilter === 'excel' ? 'filter-chip is-active' : 'filter-chip' },
+            { key: 'folders', label: 'Folders', className: this.activeFilter === 'folders' ? 'filter-chip is-active' : 'filter-chip' }
+        ];
+    }
+
     get breadcrumbs() {
         const crumbs = [...LIBRARY_ROOT, ...this.path];
         return crumbs.map((crumb, index) => ({
@@ -116,7 +150,12 @@ export default class LinkEase extends LightningElement {
     get libraryRows() {
         const searchTerm = this.searchTerm.trim().toLowerCase();
         const children = (this.currentFolder?.children || []).filter((item) => {
-            return !searchTerm || (item.name || '').toLowerCase().includes(searchTerm);
+            const extension = this.getFileType(item).toLowerCase();
+            const matchesFilter = this.activeFilter === 'all'
+                || (this.activeFilter === 'folders' && item.isFolder)
+                || (this.activeFilter === 'pdf' && extension === 'pdf')
+                || (this.activeFilter === 'excel' && ['xls', 'xlsx', 'csv'].includes(extension));
+            return matchesFilter && (!searchTerm || (item.name || '').toLowerCase().includes(searchTerm));
         });
         return [...children]
             .sort((left, right) => {
@@ -175,8 +214,12 @@ export default class LinkEase extends LightningElement {
     }
 
     connectedCallback() {
+        const savedTheme = window.localStorage.getItem('linkease-theme');
+        this.theme = savedTheme === 'dark' || savedTheme === 'light' ? savedTheme : 'system';
         this.loadRootFolder();
     }
+
+    renderedCallback() { this.applyTheme(); }
 
     disconnectedCallback() {
         this.stopColumnResize();
@@ -231,6 +274,34 @@ export default class LinkEase extends LightningElement {
         this.searchTerm = event.target.value || '';
     }
 
+    handleFilter(event) { this.activeFilter = event.currentTarget.dataset.filter; }
+    setListView() { this.viewMode = 'list'; }
+    setGridView() { this.viewMode = 'grid'; }
+
+    toggleTheme() {
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const currentIsDark = this.theme === 'dark' || (this.theme === 'system' && prefersDark);
+        this.theme = currentIsDark ? 'light' : 'dark';
+        window.localStorage.setItem('linkease-theme', this.theme);
+        this.applyTheme();
+    }
+
+    applyTheme() {
+        const shell = this.template.querySelector('.link-ease-shell');
+        if (!shell) return;
+        if (this.theme === 'system') shell.removeAttribute('data-theme');
+        else shell.setAttribute('data-theme', this.theme);
+    }
+
+    handleDragOver(event) { event.preventDefault(); event.currentTarget.classList.add('is-dragging'); }
+    handleDragLeave(event) { event.currentTarget.classList.remove('is-dragging'); }
+    handleDrop(event) {
+        event.preventDefault();
+        event.currentTarget.classList.remove('is-dragging');
+        const droppedFiles = event.dataTransfer?.files;
+        if (droppedFiles?.length) this.handleFileChange({ target: { files: droppedFiles, value: null } });
+    }
+
     closeUploadModal() { if (!this.isUploading) this.showUploadModal = false; }
     finishUpload() {
         if (!this.uploadComplete) return;
@@ -243,12 +314,12 @@ export default class LinkEase extends LightningElement {
     handleModalBackdropClick() { this.closeUploadModal(); }
 
     openInSharePoint() {
-        const url = this.currentFolder?.webUrl;
+        const url = this.selectedItemWebUrl || this.currentFolder?.webUrl;
         if (url) {
             window.open(url, '_blank', 'noopener');
         } else {
             this.showToast('SharePoint link unavailable',
-                'The current folder does not have a SharePoint link.', 'warning');
+                'The selected file or current folder does not have a SharePoint link.', 'warning');
         }
     }
 
@@ -490,6 +561,7 @@ export default class LinkEase extends LightningElement {
         if (!this.recordId) return;
         this.isLoadingFiles = true;
         try {
+            this.libraryErrorMessage = '';
             const tree = await getFolderTree({ recordId: this.recordId });
             this.rootFolder = tree;
             this.currentFolder = tree;
@@ -513,6 +585,7 @@ export default class LinkEase extends LightningElement {
                 await this.requestFolderReconciliationIfNeeded();
                 this.scheduleFolderPreparationRetry();
             } else {
+                this.libraryErrorMessage = message;
                 this.showToast('Unable to load files', message, 'error');
             }
         } finally {
@@ -579,6 +652,7 @@ export default class LinkEase extends LightningElement {
         if (!this.recordId || !folderId) return;
         this.isLoadingFiles = true;
         try {
+            this.libraryErrorMessage = '';
             const folder = await getFolderContents({ recordId: this.recordId, folderItemId: folderId });
             folder.name = folder.name || folderName;
             this.currentFolder = folder;
@@ -588,6 +662,7 @@ export default class LinkEase extends LightningElement {
             this.path = nextPath;
         } catch (error) {
             const message = error?.body?.message || error?.message || 'Unable to open this folder.';
+            this.libraryErrorMessage = message;
             this.showToast('Unable to load files', message, 'error');
         } finally {
             this.isLoadingFiles = false;

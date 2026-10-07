@@ -1,18 +1,18 @@
 :host {
     /* LinkEase document-library design tokens. */
     --le-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    --le-primary: #0176d3;
+    --le-primary: #0B5CAB;
     --le-primary-hover: #0b5cab;
     --le-primary-soft: #eaf5fe;
     --le-teal: #087f83;
-    --le-background: #f7f9fb;
-    --le-surface: #ffffff;
-    --le-surface-subtle: #f5f7fa;
-    --le-border: #d8dde6;
+    --le-background: #FFFFFF;
+    --le-surface: #F4F6F9;
+    --le-surface-subtle: #FFFFFF;
+    --le-border: #E3E6EB;
     --le-border-strong: #aeb8c5;
-    --le-text: #181818;
-    --le-text-secondary: #444b53;
-    --le-text-muted: #5f6b7a;
+    --le-text: #181B21;
+    --le-text-secondary: #181B21;
+    --le-text-muted: #5C6370;
     --le-success: #2e844a;
     --le-warning: #b35c00;
     --le-error: #ba0517;
@@ -26,6 +26,11 @@
     color: var(--le-text);
     font-family: var(--le-font);
 }
+
+:host([data-theme="dark"]) { --le-primary: #4C9AFF; --le-primary-hover: #8bbcff; --le-primary-soft: #263a55; --le-background: #16181D; --le-surface: #1F232B; --le-surface-subtle: #16181D; --le-border: #2E3440; --le-border-strong: #596273; --le-text: #E8EAED; --le-text-secondary: #E8EAED; --le-text-muted: #A3A9B4; --le-focus: #4C9AFF; }
+.link-ease-shell[data-theme="dark"] { --le-primary: #4C9AFF; --le-primary-hover: #8bbcff; --le-primary-soft: #263a55; --le-background: #16181D; --le-surface: #1F232B; --le-surface-subtle: #16181D; --le-border: #2E3440; --le-border-strong: #596273; --le-text: #E8EAED; --le-text-secondary: #E8EAED; --le-text-muted: #A3A9B4; --le-focus: #4C9AFF; }
+@media (prefers-color-scheme: dark) { :host { --le-primary: #4C9AFF; --le-primary-hover: #8bbcff; --le-primary-soft: #263a55; --le-background: #16181D; --le-surface: #1F232B; --le-surface-subtle: #16181D; --le-border: #2E3440; --le-border-strong: #596273; --le-text: #E8EAED; --le-text-secondary: #E8EAED; --le-text-muted: #A3A9B4; --le-focus: #4C9AFF; } :host([data-theme="light"]) { --le-primary: #0B5CAB; --le-primary-hover: #0b5cab; --le-primary-soft: #eaf5fe; --le-background: #FFFFFF; --le-surface: #F4F6F9; --le-surface-subtle: #FFFFFF; --le-border: #E3E6EB; --le-text: #181B21; --le-text-secondary: #181B21; --le-text-muted: #5C6370; } }
+@media (prefers-color-scheme: dark) { .link-ease-shell[data-theme="light"] { --le-primary: #0B5CAB; --le-primary-hover: #0b5cab; --le-primary-soft: #eaf5fe; --le-background: #FFFFFF; --le-surface: #F4F6F9; --le-surface-subtle: #FFFFFF; --le-border: #E3E6EB; --le-text: #181B21; --le-text-secondary: #181B21; --le-text-muted: #5C6370; } }
 
 .link-ease-shell { max-width: 100%; padding: 0.5rem; background: var(--le-background); }
 .clipboard-fallback { position: fixed; top: -10000px; left: -10000px; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
@@ -169,6 +174,25 @@
     .library-viewbar { align-items: flex-start; flex-direction: column; gap: 0.65rem; padding: 0.75rem; }
     .library-actions { width: 100%; margin-left: 0; }
 }
+
+/* Modern LinkEase shell. These rules intentionally sit last so they replace
+   the legacy compact-library presentation without changing its behavior. */
+.link-ease-shell { padding: 0.75rem; background: var(--le-background); }
+.files-card { --slds-c-card-color-background: var(--le-surface); --slds-c-card-radius-border: 0.5rem; --slds-c-card-shadow: none; border: 1px solid var(--le-border); border-radius: 0.5rem; overflow: hidden; }
+.link-ease-panel, .library-section { background: var(--le-surface); }
+.page-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.1rem; background: var(--le-surface-subtle); border-bottom: 1px solid var(--le-border); }
+.header-title, .header-actions { display: inline-flex; align-items: center; gap: 0.75rem; min-width: 0; }.header-title h1 { margin: 0; color: var(--le-text); font-size: 1rem; font-weight: 700; }.header-title > div { min-width: 0; }.linkease-logo { width: 2rem; height: 2rem; }.sync-pill { display: inline-flex; align-items: center; gap: 0.35rem; margin-top: 0.12rem; color: var(--le-text-muted); font-size: var(--le-font-xs); }.sync-dot { width: 0.45rem; height: 0.45rem; border-radius: 50%; background: var(--le-success); }
+.icon-button { display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; padding: 0; border: 1px solid var(--le-border); border-radius: 0.5rem; background: var(--le-surface-subtle); cursor: pointer; }.icon-button:hover { border-color: var(--le-primary); background: var(--le-primary-soft); }.icon-button:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--le-focus); outline-offset: 2px; }.icon-button lightning-icon { --slds-c-icon-color-foreground-default: var(--le-text-secondary); }
+.theme-toggle { display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; padding: 0; border: 1px solid var(--le-border); border-radius: 50%; background: var(--le-surface-subtle); color: var(--le-text-secondary); font: 1.3rem/1 var(--le-font); cursor: pointer; }.theme-toggle:hover { border-color: var(--le-primary); background: var(--le-primary-soft); color: var(--le-primary); }
+.sharepoint-connected { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--le-text-muted); font-size: var(--le-font-xs); font-weight: 600; }.sharepoint-connected .sharepoint-logo { width: 1.35rem; height: 1.35rem; background: #087f83; }.open-sharepoint-button { display: inline-flex; align-items: center; gap: 0.38rem; padding: 0.48rem 0.65rem; border: 1px solid var(--le-border); border-radius: 0.5rem; background: var(--le-surface-subtle); color: var(--le-text-secondary); font: 700 var(--le-font-xs) var(--le-font); cursor: pointer; }.open-sharepoint-button:hover { border-color: var(--le-primary); background: var(--le-primary-soft); color: var(--le-primary); }.open-sharepoint-button lightning-icon { --slds-c-icon-color-foreground-default: currentColor; }
+.upload-top-button { margin-left: 0; border-radius: 0.5rem; background: var(--le-primary); border-color: var(--le-primary); }.upload-top-button:hover:not(:disabled) { background: var(--le-primary-hover); }
+.breadcrumb { min-height: 2.65rem; padding: 0 1.1rem; background: var(--le-surface); color: var(--le-text-muted); border-bottom: 1px solid var(--le-border); }.breadcrumb-link { color: var(--le-text-muted); }.breadcrumb-current { color: var(--le-text); }
+.summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; padding: 1rem 1.1rem; background: var(--le-surface); }.summary-card { display: grid; gap: 0.25rem; min-width: 0; padding: 0.85rem; border: 1px solid var(--le-border); border-radius: 0.5rem; background: var(--le-surface-subtle); }.summary-card > span, .summary-card small { overflow: hidden; color: var(--le-text-muted); font-size: var(--le-font-xs); text-overflow: ellipsis; white-space: nowrap; }.summary-card strong { color: var(--le-text); font-size: 1.1rem; }
+.upload-canvas { display: block; margin: 0 1.1rem 1rem; border: 1px dashed var(--le-primary); border-radius: 0.5rem; background: var(--le-primary-soft); }.upload-canvas.is-dragging, .modal-drop-zone.is-dragging { border-style: solid; background: var(--le-primary-soft); box-shadow: inset 0 0 0 1px var(--le-primary); }.upload-canvas-prompt { display: flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 7rem; padding: 1rem; color: var(--le-text); text-align: center; }.upload-canvas-prompt span { color: var(--le-text-muted); font-size: var(--le-font-xs); }.upload-canvas-prompt lightning-icon { --slds-c-icon-color-foreground-default: var(--le-primary); }.upload-canvas-prompt lightning-button { margin-left: 0.5rem; --slds-c-button-brand-color-background: var(--le-primary); --slds-c-button-brand-color-border: var(--le-primary); }
+.library-section { border-top: 1px solid var(--le-border); }.library-viewbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.65rem; min-height: auto; padding: 0.85rem 1.1rem; }.search-box { width: min(19rem, 100%); border-color: var(--le-border); border-radius: 0.5rem; background: var(--le-surface-subtle); }.search-box input { background: transparent; color: var(--le-text); }.filter-group, .view-toggle { display: inline-flex; align-items: center; gap: 0.35rem; }.filter-chip { padding: 0.32rem 0.6rem; border: 1px solid var(--le-border); border-radius: 999px; background: var(--le-surface-subtle); color: var(--le-text-secondary); font: 600 var(--le-font-xs) var(--le-font); cursor: pointer; }.filter-chip:hover, .filter-chip.is-active { border-color: var(--le-primary); background: var(--le-primary-soft); color: var(--le-primary); }
+.bulk-bar, .error-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem; margin: 0 1.1rem 0.85rem; padding: 0.65rem 0.75rem; border-radius: 0.5rem; font-size: var(--le-font-sm); }.bulk-bar { background: var(--le-primary-soft); color: var(--le-text); }.bulk-bar span { margin-right: auto; font-weight: 700; }.bulk-bar button, .error-banner button { border: 0; background: transparent; color: var(--le-primary); font: 700 var(--le-font-sm) var(--le-font); cursor: pointer; }.error-banner { border: 1px solid var(--le-error); background: var(--le-surface-subtle); color: var(--le-text); }.error-banner lightning-icon { --slds-c-icon-color-foreground-default: var(--le-error); }
+.table-wrap { border-top: 1px solid var(--le-border); }.library-table { font-size: 13px; }.library-table th { background: var(--le-surface-subtle); color: var(--le-text-muted); }.library-table td { color: var(--le-text-secondary); }.library-table tbody tr:hover, .library-table tbody tr.is-selected { background: var(--le-primary-soft); }.file-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0.75rem; padding: 0 1.1rem 1.1rem; }.file-tile { display: grid; gap: 0.5rem; min-width: 0; padding: 0.85rem; border: 1px solid var(--le-border); border-radius: 0.5rem; background: var(--le-surface-subtle); cursor: pointer; }.file-tile:hover { border-color: var(--le-primary); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1); }.file-tile strong, .file-tile small { overflow: hidden; color: var(--le-text); text-overflow: ellipsis; white-space: nowrap; }.file-tile small { color: var(--le-text-muted); font-size: var(--le-font-xs); }.file-tile button { justify-self: start; padding: 0; border: 0; background: transparent; color: var(--le-primary); font: 700 var(--le-font-xs) var(--le-font); cursor: pointer; }.empty-state { display: grid; justify-items: center; gap: 0.55rem; padding: 3rem 1rem; color: var(--le-text-muted); text-align: center; }.empty-state strong { color: var(--le-text); }.empty-state lightning-icon { --slds-c-icon-color-foreground-default: var(--le-primary); }
+@media (max-width: 42rem) { .page-header { padding: 0.75rem; }.header-actions { gap: 0.4rem; }.sharepoint-connected > span:last-child { display: none; }.open-sharepoint-button > span { display: none; }.open-sharepoint-button { width: 2.25rem; justify-content: center; padding: 0; }.summary-grid { grid-template-columns: 1fr; padding: 0.75rem; }.upload-canvas { margin: 0 0.75rem 0.75rem; }.upload-canvas-prompt { align-items: center; flex-direction: column; }.upload-canvas-prompt lightning-button { margin-left: 0; }.library-viewbar { padding: 0.75rem; }.filter-group { order: 3; width: 100%; overflow-x: auto; padding-bottom: 0.15rem; }.breadcrumb { padding: 0 0.75rem; }.bulk-bar, .error-banner { margin-right: 0.75rem; margin-left: 0.75rem; } }
 
 @media (max-width: 36rem) {
     .link-ease-shell { padding: 0; }

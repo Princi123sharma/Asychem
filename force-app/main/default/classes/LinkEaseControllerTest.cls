@@ -81,6 +81,28 @@ private class LinkEaseControllerTest {
         }
     }
 
+    private class ChunkUploadMock implements HttpCalloutMock {
+        public HttpResponse respond(HttpRequest request) {
+            System.assertEquals('PUT', request.getMethod());
+            System.assertEquals('application/octet-stream', request.getHeader('Content-Type'));
+            System.assertEquals('5', request.getHeader('Content-Length'));
+            System.assertEquals('bytes 0-4/5', request.getHeader('Content-Range'));
+            HttpResponse response = new HttpResponse();
+            response.setStatusCode(201);
+            response.setBody('{"id":"completed-file"}');
+            return response;
+        }
+    }
+
+    private class ChunkFailureMock implements HttpCalloutMock {
+        public HttpResponse respond(HttpRequest request) {
+            HttpResponse response = new HttpResponse();
+            response.setStatusCode(503);
+            response.setBody('SharePoint temporarily unavailable');
+            return response;
+        }
+    }
+
     private class ListFilesMock implements HttpCalloutMock {
         public HttpResponse respond(HttpRequest request) {
             System.assertEquals('GET', request.getMethod());
@@ -193,6 +215,43 @@ private class LinkEaseControllerTest {
         ];
         System.assertEquals('Active', sessionRecord.Status__c);
         System.assertEquals(5 * 1024 * 1024, sessionRecord.Total_Size__c);
+    }
+
+    @IsTest
+    static void completesAFinalBinaryChunkAndMarksItsSessionComplete() {
+        SharePoint_Upload_Session__c sessionRecord = new SharePoint_Upload_Session__c(
+            Upload_Url__c = 'https://upload.example.test/session', Total_Size__c = 5,
+            Next_Byte__c = 0, Status__c = 'Active', Expires_At__c = System.now().addHours(1)
+        );
+        insert sessionRecord;
+        Test.setMock(HttpCalloutMock.class, new ChunkUploadMock());
+
+        Test.startTest();
+        LinkEaseController.uploadChunk(sessionRecord.Id, 'Ynl0ZXM=', 0, 5);
+        Test.stopTest();
+
+        sessionRecord = [SELECT Next_Byte__c, Status__c FROM SharePoint_Upload_Session__c WHERE Id = :sessionRecord.Id];
+        System.assertEquals(5, sessionRecord.Next_Byte__c);
+        System.assertEquals('Completed', sessionRecord.Status__c);
+    }
+
+    @IsTest
+    static void marksTheSessionFailedWhenSharePointRejectsAChunk() {
+        SharePoint_Upload_Session__c sessionRecord = new SharePoint_Upload_Session__c(
+            Upload_Url__c = 'https://upload.example.test/session', Total_Size__c = 5,
+            Next_Byte__c = 0, Status__c = 'Active', Expires_At__c = System.now().addHours(1)
+        );
+        insert sessionRecord;
+        Test.setMock(HttpCalloutMock.class, new ChunkFailureMock());
+
+        try {
+            LinkEaseController.uploadChunk(sessionRecord.Id, 'Ynl0ZXM=', 0, 5);
+            System.assert(false, 'Expected a handled SharePoint chunk error.');
+        } catch (AuraHandledException exceptionRecord) {
+            System.assert(exceptionRecord.getMessage().contains('upload chunk failed'));
+        }
+        sessionRecord = [SELECT Status__c FROM SharePoint_Upload_Session__c WHERE Id = :sessionRecord.Id];
+        System.assertEquals('Failed', sessionRecord.Status__c);
     }
 
     @IsTest

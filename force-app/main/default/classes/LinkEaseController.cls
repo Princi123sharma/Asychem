@@ -326,7 +326,22 @@ public with sharing class LinkEaseController {
         if (sessionRecord.OwnerId != UserInfo.getUserId()) throwHandled('You cannot use this upload session.');
         if (sessionRecord.Status__c != 'Active' || sessionRecord.Expires_At__c <= System.now()) throwHandled('This upload session has expired. Start again.');
         if (sessionRecord.Total_Size__c.longValue() != total || sessionRecord.Next_Byte__c.longValue() != start) throwHandled('Upload chunks are out of sequence.');
-        String response = SharePointGraphClient.uploadChunk(sessionRecord.Upload_Url__c, chunk, start, total);
+        if (total <= 0 || total > MAX_FILE_SIZE_BYTES) throwHandled('Each file must be 50 MB or smaller.');
+        if (start < 0 || start + chunk.size() > total) throwHandled('Upload chunk size does not match the file size. Start again.');
+        // Microsoft Graph requires every chunk except the final one to be a
+        // multiple of 320 KiB. The LWC uses 1.25 MB (4 x 320 KiB).
+        if (start + chunk.size() < total && Math.mod(chunk.size(), 320 * 1024) != 0) {
+            throwHandled('Upload chunk size is invalid. Start the upload again.');
+        }
+        String response;
+        try {
+            response = SharePointGraphClient.uploadChunk(sessionRecord.Upload_Url__c, chunk, start, total);
+        } catch (Exception exceptionRecord) {
+            sessionRecord.Status__c = 'Failed';
+            update sessionRecord;
+            throwHandled('A SharePoint upload chunk failed. Please retry the file. ' + exceptionRecord.getMessage());
+            return null;
+        }
         sessionRecord.Next_Byte__c = start + chunk.size();
         if (sessionRecord.Next_Byte__c.longValue() == total) sessionRecord.Status__c = 'Completed';
         update sessionRecord;
