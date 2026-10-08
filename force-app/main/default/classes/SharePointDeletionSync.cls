@@ -4,6 +4,7 @@ public without sharing class SharePointDeletionSync
     private static final Integer MAX_DELTA_PAGES = 90;
     // The delta cursor is persisted on SharePoint_Sync_State__c between runs.
     @TestVisible private static SharePoint_Config__mdt configOverride;
+    @TestVisible private static Integer maxDeltaPagesOverride;
 
     public void execute(QueueableContext context) {
         SharePoint_Config__mdt config = getConfig();
@@ -18,7 +19,10 @@ public without sharing class SharePointDeletionSync
         SharePointGraphClient.DeltaResult lastResult;
         Integer pageCount = 0;
 
-        while (pageCount < MAX_DELTA_PAGES) {
+        Integer pageLimit = Test.isRunningTest() && maxDeltaPagesOverride != null
+            ? maxDeltaPagesOverride
+            : MAX_DELTA_PAGES;
+        while (pageCount < pageLimit) {
             lastResult = SharePointGraphClient.getDelta(
                 config.Drive_Id__c, deltaLink, state.Id == null && String.isBlank(deltaLink)
             );
@@ -32,16 +36,23 @@ public without sharing class SharePointDeletionSync
             deltaLink = lastResult.nextLink;
         }
 
-        if (lastResult == null || String.isNotBlank(lastResult.nextLink)) {
-            System.debug(LoggingLevel.WARN, 'SharePoint deletion sync stopped before reaching a delta link.');
-            return;
-        }
+        if (lastResult == null) return;
 
+        // Apply the deletions processed in this run before checkpointing. If
+        // the page cap was reached, nextLink resumes at the next unseen page.
         SharePointFileLinkService.removeLinksForDeletedItems(deletedItemIds);
         state.Drive_Id__c = config.Drive_Id__c;
-        state.Delta_Link__c = lastResult.deltaLink;
+        Boolean hasMorePages = String.isNotBlank(lastResult.nextLink);
+        state.Delta_Link__c = hasMorePages ? lastResult.nextLink : lastResult.deltaLink;
         state.Last_Sync_Date__c = System.now();
         upsert state;
+
+        if (hasMorePages) {
+            System.debug(LoggingLevel.INFO, 'SharePoint deletion sync checkpointed at the page limit; queuing a continuation.');
+            if (Limits.getQueueableJobs() < Limits.getLimitQueueableJobs()) {
+                System.enqueueJob(new SharePointDeletionSync());
+            }
+        }
     }
 
     private static SharePoint_Config__mdt getConfig() {

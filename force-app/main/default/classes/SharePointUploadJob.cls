@@ -25,7 +25,7 @@ public with sharing class SharePointUploadJob implements Queueable, Database.All
         SharePoint_Config__mdt config = SharePointFolderService.getConfiguration();
         if (config == null || String.isBlank(config.Drive_Id__c)) { recordAllInputFailures('Default SharePoint configuration has no Drive ID.'); return; }
         if (pendingUploads == null) {
-            Set<Id> accountsNeedingFolders = findAccountsNeedingContractFolders();
+            Set<Id> accountsNeedingFolders = findAccountsNeedingFolders();
             if (!accountsNeedingFolders.isEmpty()) {
                 if (folderDeferrals >= MAX_FOLDER_DEFERRALS) { recordAllInputFailures('Account SharePoint folders were not created after ' + MAX_FOLDER_DEFERRALS + ' attempts.'); return; }
                 System.enqueueJob(new SharePointFolderCreationJob(accountsNeedingFolders, documentToEntityIds, folderDeferrals + 1));
@@ -84,13 +84,38 @@ public with sharing class SharePointUploadJob implements Queueable, Database.All
         return result;
     }
 
-    private Set<Id> findAccountsNeedingContractFolders() {
-        Set<Id> contractIds = new Set<Id>();
-        for (Set<Id> entities : documentToEntityIds.values()) for (Id entityId : entities) if (entityId.getSObjectType() == Contract.SObjectType) contractIds.add(entityId);
+    @TestVisible
+    private Set<Id> findAccountsNeedingFolders() {
         Set<Id> accountIds = new Set<Id>();
-        if (contractIds.isEmpty()) return accountIds;
-        for (Contract record : [SELECT AccountId FROM Contract WHERE Id IN :contractIds]) if (record.AccountId != null) accountIds.add(record.AccountId);
-        for (Account record : [SELECT Id, SharePoint_Contract_Folder_Id__c FROM Account WHERE Id IN :accountIds]) if (String.isNotBlank(record.SharePoint_Contract_Folder_Id__c)) accountIds.remove(record.Id);
+        Set<Id> opportunityIds = new Set<Id>();
+        Set<Id> contractIds = new Set<Id>();
+        for (Set<Id> entities : documentToEntityIds.values()) for (Id entityId : entities) {
+            if (entityId.getSObjectType() == Account.SObjectType) accountIds.add(entityId);
+            else if (entityId.getSObjectType() == Opportunity.SObjectType) opportunityIds.add(entityId);
+            else if (entityId.getSObjectType() == Contract.SObjectType) contractIds.add(entityId);
+        }
+        if (!opportunityIds.isEmpty()) {
+            for (Opportunity record : [SELECT AccountId FROM Opportunity WHERE Id IN :opportunityIds]) {
+                if (record.AccountId != null) accountIds.add(record.AccountId);
+            }
+        }
+        if (!contractIds.isEmpty()) {
+            for (Contract record : [SELECT AccountId FROM Contract WHERE Id IN :contractIds]) {
+                if (record.AccountId != null) accountIds.add(record.AccountId);
+            }
+        }
+        for (Account record : [
+            SELECT Id, SharePoint_Folder_Id__c, SharePoint_Contract_Folder_Id__c,
+                   SharePoint_Opportunities_Folder_Id__c
+            FROM Account
+            WHERE Id IN :accountIds
+        ]) {
+            if (String.isNotBlank(record.SharePoint_Folder_Id__c) &&
+                String.isNotBlank(record.SharePoint_Contract_Folder_Id__c) &&
+                String.isNotBlank(record.SharePoint_Opportunities_Folder_Id__c)) {
+                accountIds.remove(record.Id);
+            }
+        }
         return accountIds;
     }
     private static void addFolder(Set<String> folders, String folderId) { if (String.isNotBlank(folderId)) folders.add(folderId); }

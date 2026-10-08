@@ -30,8 +30,13 @@ public class FetchApiQueueable implements Queueable, Database.AllowsCallouts {
             System.debug('🔁 Fetching page with skip=' + skip + ', chain=' + chainCount);
 			System.debug('result.records--' + result.records);
             if (result.records != null && !result.records.isEmpty()) {
-                TriggerControlHelper.isBatchRunning = true;
-                MethodSyncController.processData(result.records, tableName);
+                Boolean originalBatchFlag = TriggerControlHelper.isBatchRunning;
+                try {
+                    TriggerControlHelper.isBatchRunning = true;
+                    MethodSyncController.processData(result.records, tableName);
+                } finally {
+                    TriggerControlHelper.isBatchRunning = originalBatchFlag;
+                }
 
                 // Chain next job if still under safe limit
                 if (chainCount < SAFE_CHAIN_LIMIT) {

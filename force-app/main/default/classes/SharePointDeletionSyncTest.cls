@@ -10,6 +10,18 @@ private class SharePointDeletionSyncTest {
         }
     }
 
+    private class BacklogPageMock implements HttpCalloutMock {
+        public HttpResponse respond(HttpRequest request) {
+            HttpResponse response = new HttpResponse();
+            response.setStatusCode(200);
+            response.setBody(
+                '{"value":[],"@odata.nextLink":' +
+                '"https://graph.microsoft.com/v1.0/drives/drive-id/root/delta?skiptoken=next-page"}'
+            );
+            return response;
+        }
+    }
+
     @IsTest
     static void removesTheContractFileLinkWhenTheCentralCdaCopyIsDeleted() {
         Account accountRecord = SharePointTestDataFactory.insertAccount('Deletion Sync Account');
@@ -67,5 +79,31 @@ private class SharePointDeletionSyncTest {
             'DeletedFromSharePoint',
             [SELECT Status__c FROM SharePoint_File_Link__c WHERE Id = :mapping.Id].Status__c
         );
+    }
+
+    @IsTest
+    static void checkpointsTheNextPageWhenThePageLimitIsReached() {
+        SharePointDeletionSync.configOverride = new SharePoint_Config__mdt(Drive_Id__c = 'drive-id');
+        SharePointDeletionSync.maxDeltaPagesOverride = 1;
+        Test.setMock(HttpCalloutMock.class, new BacklogPageMock());
+
+        try {
+            new SharePointDeletionSync().execute((QueueableContext) null);
+        } finally {
+            SharePointDeletionSync.maxDeltaPagesOverride = null;
+        }
+
+        SharePoint_Sync_State__c state = [
+            SELECT Delta_Link__c
+            FROM SharePoint_Sync_State__c
+            WHERE Name = 'Default'
+            LIMIT 1
+        ];
+        System.assertEquals(
+            'https://graph.microsoft.com/v1.0/drives/drive-id/root/delta?skiptoken=next-page',
+            state.Delta_Link__c,
+            'The next delta page must be persisted before a continuation is queued.'
+        );
+        System.assertEquals(1, Limits.getQueueableJobs());
     }
 }

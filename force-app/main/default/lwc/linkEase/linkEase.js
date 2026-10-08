@@ -1,7 +1,6 @@
 import { LightningElement, api } from 'lwc';
 import { ShowToastEvent } from 'lightning/platformShowToastEvent';
 import { notifyRecordUpdateAvailable } from 'lightning/uiRecordApi';
-import linkEaseLogo from '@salesforce/resourceUrl/linkEaseLogo';
 import uploadFile from '@salesforce/apex/LinkEaseController.uploadFile';
 import createUploadSession from '@salesforce/apex/LinkEaseController.createUploadSession';
 import uploadChunk from '@salesforce/apex/LinkEaseController.uploadChunk';
@@ -47,9 +46,7 @@ export default class LinkEase extends LightningElement {
     searchTerm = '';
     activeFilter = 'all';
     viewMode = 'list';
-    theme = 'system';
     libraryErrorMessage = '';
-    linkEaseLogoUrl = linkEaseLogo;
 
     get hasFiles() {
         return this.files.length > 0;
@@ -122,13 +119,6 @@ export default class LinkEase extends LightningElement {
     get showBulkDownload() { return this.selectedCount === 1 && !this.selectedItemIsFolder; }
     get isListView() { return this.viewMode === 'list'; }
     get isGridView() { return this.viewMode === 'grid'; }
-    get themeToggleIcon() {
-        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-        return this.theme === 'dark' || (this.theme === 'system' && prefersDark) ? '☀' : '☾';
-    }
-    get themeToggleLabel() {
-        return this.themeToggleIcon === '☀' ? 'Switch to light theme' : 'Switch to dark theme';
-    }
     get filterOptions() {
         return [
             { key: 'all', label: 'All', className: this.activeFilter === 'all' ? 'filter-chip is-active' : 'filter-chip' },
@@ -213,13 +203,7 @@ export default class LinkEase extends LightningElement {
         return 'file-icon file-icon--generic';
     }
 
-    connectedCallback() {
-        const savedTheme = window.localStorage.getItem('linkease-theme');
-        this.theme = savedTheme === 'dark' || savedTheme === 'light' ? savedTheme : 'system';
-        this.loadRootFolder();
-    }
-
-    renderedCallback() { this.applyTheme(); }
+    connectedCallback() { this.loadRootFolder(); }
 
     disconnectedCallback() {
         this.stopColumnResize();
@@ -277,21 +261,6 @@ export default class LinkEase extends LightningElement {
     handleFilter(event) { this.activeFilter = event.currentTarget.dataset.filter; }
     setListView() { this.viewMode = 'list'; }
     setGridView() { this.viewMode = 'grid'; }
-
-    toggleTheme() {
-        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-        const currentIsDark = this.theme === 'dark' || (this.theme === 'system' && prefersDark);
-        this.theme = currentIsDark ? 'light' : 'dark';
-        window.localStorage.setItem('linkease-theme', this.theme);
-        this.applyTheme();
-    }
-
-    applyTheme() {
-        const shell = this.template.querySelector('.link-ease-shell');
-        if (!shell) return;
-        if (this.theme === 'system') shell.removeAttribute('data-theme');
-        else shell.setAttribute('data-theme', this.theme);
-    }
 
     handleDragOver(event) { event.preventDefault(); event.currentTarget.classList.add('is-dragging'); }
     handleDragLeave(event) { event.currentTarget.classList.remove('is-dragging'); }

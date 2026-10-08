@@ -107,39 +107,22 @@ public with sharing class LinkEaseController {
         // delete only items that are actually children of the displayed folder.
         assertItemBelongsToRecord(recordId, folderItemId, config);
         Set<String> requestedIds = new Set<String>(itemIds);
-        Map<String, String> selectedFileNamesById = new Map<String, String>();
+        Set<String> itemIdsToDelete = new Set<String>();
         for (SharePointGraphClient.DriveItem item : SharePointGraphClient.listFolderContents(
             config.Drive_Id__c, folderItemId
         )) {
             if (item.isFolder != true && requestedIds.contains(item.id)) {
-                selectedFileNamesById.put(item.id, item.name);
+                itemIdsToDelete.add(item.id);
             }
         }
-        if (selectedFileNamesById.size() != requestedIds.size()) {
+        if (itemIdsToDelete.size() != requestedIds.size()) {
             throwHandled('One or more selected files are no longer in this SharePoint folder. Refresh and try again.');
         }
 
-        Set<String> itemIdsToDelete = new Set<String>(selectedFileNamesById.keySet());
-        // A Contract upload writes two copies. When deletion begins in the
-        // Account Contracts folder, remove the same-named counterpart from the
-        // Contract's type/status-selected central Legal Contracts folder too.
-        Account parentAccount = recordId.getSObjectType() == Contract.SObjectType
-            ? getAccountWithFolders(getAccountId(recordId))
-            : null;
-        if (parentAccount != null && folderItemId == parentAccount.SharePoint_Contract_Folder_Id__c) {
-            Set<String> selectedFileNames = new Set<String>(selectedFileNamesById.values());
-            for (String targetFolderId : getTargetFolderIds(recordId, config)) {
-                if (targetFolderId == folderItemId) continue;
-                for (SharePointGraphClient.DriveItem item : SharePointGraphClient.listFolderContents(
-                    config.Drive_Id__c, targetFolderId
-                )) {
-                    if (item.isFolder != true && selectedFileNames.contains(item.name)) {
-                        itemIdsToDelete.add(item.id);
-                    }
-                }
-            }
-        }
-
+        // Contract uploads can create a second copy in a shared central folder.
+        // There is no persisted relationship between those copies, so never
+        // infer a counterpart from its filename: duplicate names can belong to
+        // another Account. Delete only the exact item selected in this folder.
         for (String itemId : itemIdsToDelete) {
             SharePointGraphClient.deleteItem(config.Drive_Id__c, itemId);
         }

@@ -55,4 +55,32 @@ private class SharePointFolderCreationJobTest {
         System.assertEquals(1, Limits.getQueueableJobs(), 'One continuation handles the remaining Account.');
         Test.stopTest();
     }
+
+    @IsTest
+    static void preservesExistingFolderIdsAfterAnAccountRename() {
+        Account accountRecord = SharePointTestDataFactory.insertAccount('Original Account Name');
+        TriggerControlHelper.isBatchRunning = true;
+        try {
+            update new Account(
+                Id = accountRecord.Id,
+                Name = 'Renamed Account',
+                SharePoint_Folder_Id__c = 'existing-root-folder',
+                SharePoint_Contract_Folder_Id__c = 'existing-contracts-folder',
+                SharePoint_Opportunities_Folder_Id__c = 'existing-opportunities-folder'
+            );
+        } finally {
+            TriggerControlHelper.isBatchRunning = false;
+        }
+        SharePointFolderService.configOverride = new SharePoint_Config__mdt(
+            Drive_Id__c = 'drive-id', Accounts_Parent_Item_Id__c = 'accounts-parent'
+        );
+
+        Test.startTest();
+        Account updateRecord = SharePointFolderService.resolveAccountFolderUpdate(accountRecord.Id);
+        Test.stopTest();
+
+        System.assertEquals('existing-root-folder', updateRecord.SharePoint_Folder_Id__c);
+        System.assertEquals('existing-contracts-folder', updateRecord.SharePoint_Contract_Folder_Id__c);
+        System.assertEquals('existing-opportunities-folder', updateRecord.SharePoint_Opportunities_Folder_Id__c);
+    }
 }

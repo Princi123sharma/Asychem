@@ -41,35 +41,44 @@ public with sharing class SharePointFolderService {
             LIMIT 1
         ];
 
-        String accountDisplayName = String.isNotBlank(account.Nick_Name__c)
-            ? account.Nick_Name__c
-            : account.Name;
-
-        String accountFolderName = sanitizeFolderName(
-            accountDisplayName + ' ' + String.valueOf(Date.today().year())
-        );
-
-        // Always resolve from the configured Accounts parent. This repairs
-        // stale field values and ensures uploads use this Account's folder.
-        String accountFolderId = getOrCreateFolderId(
-            config.Drive_Id__c,
-            config.Accounts_Parent_Item_Id__c,
-            accountFolderName
-        );
+        // The IDs saved on the Account are authoritative. Folder names can
+        // change after an Account rename or at the start of a new year, so
+        // resolving an existing folder by its generated name can point this
+        // Account at a new folder and hide its existing documents.
+        String accountFolderId = account.SharePoint_Folder_Id__c;
+        if (String.isBlank(accountFolderId)) {
+            String accountDisplayName = String.isNotBlank(account.Nick_Name__c)
+                ? account.Nick_Name__c
+                : account.Name;
+            String accountFolderName = sanitizeFolderName(
+                accountDisplayName + ' ' + String.valueOf(Date.today().year())
+            );
+            accountFolderId = getOrCreateFolderId(
+                config.Drive_Id__c,
+                config.Accounts_Parent_Item_Id__c,
+                accountFolderName
+            );
+        }
         if (String.isBlank(accountFolderId)) {
             throw new SharePointFolderException('Unable to resolve the Account SharePoint folder.');
         }
 
-        String contractsFolderId = getOrCreateFolderId(
-            config.Drive_Id__c,
-            accountFolderId,
-            'Contracts'
-        );
-        String opportunitiesFolderId = getOrCreateFolderId(
-            config.Drive_Id__c,
-            accountFolderId,
-            'Opportunities'
-        );
+        String contractsFolderId = account.SharePoint_Contract_Folder_Id__c;
+        if (String.isBlank(contractsFolderId)) {
+            contractsFolderId = getOrCreateFolderId(
+                config.Drive_Id__c,
+                accountFolderId,
+                'Contracts'
+            );
+        }
+        String opportunitiesFolderId = account.SharePoint_Opportunities_Folder_Id__c;
+        if (String.isBlank(opportunitiesFolderId)) {
+            opportunitiesFolderId = getOrCreateFolderId(
+                config.Drive_Id__c,
+                accountFolderId,
+                'Opportunities'
+            );
+        }
         if (String.isBlank(contractsFolderId) || String.isBlank(opportunitiesFolderId)) {
             throw new SharePointFolderException(
                 'Unable to resolve the Contracts and Opportunities SharePoint folders.'

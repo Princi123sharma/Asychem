@@ -27,4 +27,33 @@ private class SharePointUploadJobTest {
         System.assertEquals(1, uploadCallCount);
         System.assertEquals(1, [SELECT Count() FROM SharePoint_File_Link__c WHERE Salesforce_Record_Id__c = :String.valueOf(accountRecord.Id)]);
     }
+
+    @IsTest static void defersAccountAndOpportunityUploadsUntilFoldersExist() {
+        Account accountRecord = SharePointTestDataFactory.insertAccount('Folder Deferral Account');
+        Opportunity opportunityRecord = new Opportunity(
+            Name = 'Folder Deferral Opportunity',
+            AccountId = accountRecord.Id,
+            StageName = 'Prospecting',
+            CloseDate = Date.today()
+        );
+        insert opportunityRecord;
+
+        Map<Id, Set<Id>> accountWork = new Map<Id, Set<Id>>{
+            accountRecord.Id => new Set<Id>{ accountRecord.Id }
+        };
+        Map<Id, Set<Id>> opportunityWork = new Map<Id, Set<Id>>{
+            accountRecord.Id => new Set<Id>{ opportunityRecord.Id }
+        };
+
+        System.assertEquals(
+            new Set<Id>{ accountRecord.Id },
+            new SharePointUploadJob(accountWork).findAccountsNeedingFolders(),
+            'An Account upload must wait until its folder structure exists.'
+        );
+        System.assertEquals(
+            new Set<Id>{ accountRecord.Id },
+            new SharePointUploadJob(opportunityWork).findAccountsNeedingFolders(),
+            'An Opportunity upload must wait for its parent Account folders.'
+        );
+    }
 }

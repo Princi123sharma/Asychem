@@ -2,8 +2,8 @@
     <div class="link-ease-shell">
         <textarea class="clipboard-fallback" aria-hidden="true" tabindex="-1"></textarea>
         <header class="page-header">
-            <div class="header-title"><img class="linkease-logo" src={linkEaseLogoUrl} alt="" /><div><h1>LinkEase</h1><span class="sync-pill"><span class="sync-dot"></span>Synced</span></div></div>
-            <div class="header-actions"><span class="sharepoint-connected" title="SharePoint connected"><span class="sharepoint-logo" aria-hidden="true">S</span><span>Connected</span></span><button class="open-sharepoint-button" type="button" onclick={openInSharePoint} title="Open selected file or current folder in SharePoint"><lightning-icon icon-name="utility:open" size="x-small"></lightning-icon><span>Open in SharePoint</span></button><button class="theme-toggle" type="button" onclick={toggleTheme} aria-label={themeToggleLabel} title={themeToggleLabel}><span aria-hidden="true">{themeToggleIcon}</span></button></div>
+            <div class="header-title"><span class="linkease-icon" aria-hidden="true"><lightning-icon icon-name="utility:link" size="small"></lightning-icon></span><div><h1>LinkEase</h1><span class="sync-pill"><span class="sync-dot"></span>Synced</span></div></div>
+            <div class="header-actions"><span class="sharepoint-connected" title="SharePoint connected"><span class="sharepoint-logo" aria-hidden="true">S</span><span>Connected</span></span><button class="open-sharepoint-button" type="button" onclick={openInSharePoint} title="Open selected file or current folder in SharePoint"><lightning-icon icon-name="utility:open" size="x-small"></lightning-icon><span>Open in SharePoint</span></button></div>
         </header>
         <nav class="breadcrumb" aria-label="SharePoint folder path">
             <template for:each={breadcrumbs} for:item="crumb" for:index="index">

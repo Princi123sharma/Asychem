@@ -92,12 +92,15 @@ public class FetchApiBatch implements Database.Batchable<Integer>, Database.Allo
     }
 
     if (!allRecordsInThisChunk.isEmpty()) {
+        Boolean originalBatchFlag = TriggerControlHelper.isBatchRunning;
         try {
             TriggerControlHelper.isBatchRunning = true;
             MethodSyncController.processData(allRecordsInThisChunk, tableName);
         } catch (DmlException e) {
             logger.error(e.getMessage());
             Logger.saveLog();
+        } finally {
+            TriggerControlHelper.isBatchRunning = originalBatchFlag;
         }
     }
 }
