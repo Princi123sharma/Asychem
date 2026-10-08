@@ -41,7 +41,9 @@ public with sharing class SharePointUploadJob implements Queueable, Database.All
 
     private void processOne(SharePoint_Config__mdt config, UploadRequest request) {
         if (String.isBlank(request.folderItemId)) { recordFailure(config, request, 'No SharePoint folder is available for this record.'); return; }
-        List<ContentVersion> versions = [SELECT ContentDocumentId, Title, FileExtension, ContentSize, VersionData FROM ContentVersion WHERE ContentDocumentId = :request.contentDocumentId AND IsLatest = true LIMIT 1];
+        // Query metadata first. Loading VersionData for a large file can exceed
+        // the Apex heap before the large-file route is selected.
+        List<ContentVersion> versions = [SELECT Id, ContentDocumentId, Title, FileExtension, ContentSize FROM ContentVersion WHERE ContentDocumentId = :request.contentDocumentId AND IsLatest = true LIMIT 1];
         if (versions.isEmpty()) { recordFailure(config, request, 'The latest Salesforce file version is unavailable.'); return; }
         ContentVersion versionRecord = versions[0];
         String fileName = versionRecord.Title + (String.isNotBlank(versionRecord.FileExtension) ? '.' + versionRecord.FileExtension : '');
@@ -50,9 +52,19 @@ public with sharing class SharePointUploadJob implements Queueable, Database.All
             SharePointFileLinkService.recordPendingLargeFileUpload(request.contentDocumentId, request.linkedEntityId, config.Drive_Id__c, request.folderItemId);
             return;
         }
-        String validationError = validationError(versionRecord);
+        String validationError = validationError(versionRecord.FileExtension);
         if (validationError != null) { recordFailure(config, request, validationError); return; }
-        UploadOutcome outcome = uploadWithRetry(config.Drive_Id__c, request.folderItemId, fileName, versionRecord.VersionData);
+        ContentVersion versionWithData = [
+            SELECT VersionData
+            FROM ContentVersion
+            WHERE Id = :versionRecord.Id
+            LIMIT 1
+        ];
+        if (versionWithData.VersionData == null) {
+            recordFailure(config, request, 'The latest Salesforce file version is unavailable.');
+            return;
+        }
+        UploadOutcome outcome = uploadWithRetry(config.Drive_Id__c, request.folderItemId, fileName, versionWithData.VersionData);
         // DML occurs only after all callout attempts have completed.
         if (outcome.uploadedItem != null) SharePointFileLinkService.recordUpload(request.contentDocumentId, request.linkedEntityId, config.Drive_Id__c, request.folderItemId, outcome.uploadedItem, fileName);
         else recordFailure(config, request, outcome.errorMessage);
@@ -128,9 +140,8 @@ public with sharing class SharePointUploadJob implements Queueable, Database.All
             FileName__c = fileName
         ));
     }
-    private static String validationError(ContentVersion versionRecord) {
-        if (versionRecord.VersionData == null) return 'The latest Salesforce file version is unavailable.';
-        String extension = String.isBlank(versionRecord.FileExtension) ? '' : versionRecord.FileExtension.toLowerCase();
+    private static String validationError(String fileExtension) {
+        String extension = String.isBlank(fileExtension) ? '' : fileExtension.toLowerCase();
         return SharePointGraphClient.RESTRICTED_FILE_EXTENSIONS.contains(extension) ? 'File type ' + extension + ' is not allowed.' : null;
     }
     private static UploadOutcome uploadWithRetry(String driveId, String folderId, String fileName, Blob data) {

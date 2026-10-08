@@ -294,7 +294,7 @@ public with sharing class LinkEaseController {
     }
 
     @AuraEnabled
-    public static String uploadChunk(Id sessionId, String base64Data, Long start, Long total) {
+    public static UploadChunkResult uploadChunk(Id sessionId, String base64Data, Long start, Long total) {
         if (sessionId == null || String.isBlank(base64Data) || start == null || total == null) {
             throwHandled('Upload chunk data is incomplete.');
         }
@@ -322,13 +322,18 @@ public with sharing class LinkEaseController {
         } catch (Exception exceptionRecord) {
             sessionRecord.Status__c = 'Failed';
             update sessionRecord;
-            throwHandled('A SharePoint upload chunk failed. Please retry the file. ' + exceptionRecord.getMessage());
-            return null;
+            UploadChunkResult failedResult = new UploadChunkResult();
+            failedResult.success = false;
+            failedResult.errorMessage = 'A SharePoint upload chunk failed. Please retry the file. ' + exceptionRecord.getMessage();
+            return failedResult;
         }
         sessionRecord.Next_Byte__c = start + chunk.size();
         if (sessionRecord.Next_Byte__c.longValue() == total) sessionRecord.Status__c = 'Completed';
         update sessionRecord;
-        return response;
+        UploadChunkResult result = new UploadChunkResult();
+        result.success = true;
+        result.response = response;
+        return result;
     }
 
     private static List<String> getTargetFolderIds(Id recordId, SharePoint_Config__mdt config) {
@@ -473,6 +478,11 @@ public with sharing class LinkEaseController {
     public class UploadSessionResult {
         @AuraEnabled public List<Id> sessionIds { get; set; }
     }
+    public class UploadChunkResult {
+        @AuraEnabled public Boolean success { get; set; }
+        @AuraEnabled public String response { get; set; }
+        @AuraEnabled public String errorMessage { get; set; }
+    }
     public class FolderReadiness { @AuraEnabled public Boolean isReady { get; set; } }
 
     @AuraEnabled(cacheable=true)
@@ -517,7 +527,7 @@ public with sharing class LinkEaseController {
     private static SharePoint_Config__mdt getConfig() {
         if (Test.isRunningTest() && configOverride != null) return configOverride;
         List<SharePoint_Config__mdt> configs = [
-            SELECT Drive_Id__c, Accounts_Parent_Item_Id__c,
+            SELECT Drive_Id__c, Accounts_Parent_Item_Id__c, CRM_Root_Item_ID__c,
                    CDA_Folder_Item_Id__c, CDA_Item_ID__c,
                    LOI_Folder_Item_Id__c, LOI_Item_ID__c,
                    MSA_Folder_Item_Id__c, MSA_Item_ID__c,

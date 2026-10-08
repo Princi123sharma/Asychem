@@ -507,7 +507,10 @@ export default class LinkEase extends LightningElement {
                         for (let start = 0; start < item.file.size; start += UPLOAD_CHUNK_SIZE) {
                             const chunk = item.file.slice(start, Math.min(start + UPLOAD_CHUNK_SIZE, item.file.size));
                             const base64Data = await this.readBlobAsBase64(chunk);
-                            await uploadChunk({ sessionId, base64Data, start, total: item.file.size });
+                            const chunkResult = await uploadChunk({ sessionId, base64Data, start, total: item.file.size });
+                            if (!chunkResult?.success) {
+                                throw new Error(chunkResult?.errorMessage || 'A SharePoint upload chunk failed. Please retry the file.');
+                            }
                             this.updateFileProgress(item.id, Math.min(99, Math.round(((start + chunk.size) / item.file.size) * 100)));
                         }
                     }

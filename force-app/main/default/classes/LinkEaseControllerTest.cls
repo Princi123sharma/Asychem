@@ -227,9 +227,10 @@ private class LinkEaseControllerTest {
         Test.setMock(HttpCalloutMock.class, new ChunkUploadMock());
 
         Test.startTest();
-        LinkEaseController.uploadChunk(sessionRecord.Id, 'Ynl0ZXM=', 0, 5);
+        LinkEaseController.UploadChunkResult result = LinkEaseController.uploadChunk(sessionRecord.Id, 'Ynl0ZXM=', 0, 5);
         Test.stopTest();
 
+        System.assertEquals(true, result.success);
         sessionRecord = [SELECT Next_Byte__c, Status__c FROM SharePoint_Upload_Session__c WHERE Id = :sessionRecord.Id];
         System.assertEquals(5, sessionRecord.Next_Byte__c);
         System.assertEquals('Completed', sessionRecord.Status__c);
@@ -244,12 +245,11 @@ private class LinkEaseControllerTest {
         insert sessionRecord;
         Test.setMock(HttpCalloutMock.class, new ChunkFailureMock());
 
-        try {
-            LinkEaseController.uploadChunk(sessionRecord.Id, 'Ynl0ZXM=', 0, 5);
-            System.assert(false, 'Expected a handled SharePoint chunk error.');
-        } catch (AuraHandledException exceptionRecord) {
-            System.assert(exceptionRecord.getMessage().contains('upload chunk failed'));
-        }
+        LinkEaseController.UploadChunkResult result = LinkEaseController.uploadChunk(
+            sessionRecord.Id, 'Ynl0ZXM=', 0, 5
+        );
+        System.assertEquals(false, result.success);
+        System.assert(result.errorMessage.contains('upload chunk failed'));
         sessionRecord = [SELECT Status__c FROM SharePoint_Upload_Session__c WHERE Id = :sessionRecord.Id];
         System.assertEquals('Failed', sessionRecord.Status__c);
     }
