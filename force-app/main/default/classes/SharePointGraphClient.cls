@@ -1,6 +1,6 @@
 public with sharing class SharePointGraphClient {
     private static final String NAMED_CREDENTIAL = 'callout:SharePoint_Graph';
-    private static final Integer TIMEOUT_MS = 20000;
+    private static final Integer TIMEOUT_MS = 20000; 
     public static final Integer SIMPLE_UPLOAD_MAX_BYTES = 4 * 1024 * 1024;
     public static final Set<String> RESTRICTED_FILE_EXTENSIONS = new Set<String>{
         'exe', 'bat', 'cmd', 'scr'
